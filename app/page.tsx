@@ -1,65 +1,48 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { Settings } from "lucide-react";
+import RadioPlayer from "@/components/RadioPlayer";
+import SettingsPanel from "@/components/SettingsPanel";
 
 export default function Home() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="flex min-h-screen flex-col items-center justify-center bg-black p-4 relative overflow-hidden">
+
+      {/* Settings Button */}
+      <button
+        onClick={() => setSettingsOpen(true)}
+        className="absolute top-4 right-4 z-20 p-2.5 bg-neutral-800/80 hover:bg-neutral-700 rounded-full transition-colors backdrop-blur-sm"
+        aria-label="Settings"
+      >
+        <Settings size={20} className="text-neutral-400" />
+      </button>
+
+      {/* Settings Panel */}
+      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* Background Ambience */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,var(--tw-gradient-stops))] from-neutral-800 via-black to-black opacity-80 z-0"></div>
+
+      {/* Content */}
+      <div className="z-10 w-full max-w-lg space-y-8 flex flex-col items-center">
+        <div className="text-center space-y-2">
+          <h1 className="text-5xl font-black text-white tracking-[0.2em] glitch-text">
+            NOWHERE
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-neutral-500 font-mono text-sm tracking-widest">
+            THE FREQUENCY OF THE LOST
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <RadioPlayer />
+
+        <div className="text-neutral-600 text-[10px] font-mono max-w-xs text-center">
+          CAUTION: PROLONGED LISTENING MAY CAUSE TEMPORAL DISPLACEMENT SYMPTOMS.
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
