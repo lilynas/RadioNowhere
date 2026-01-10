@@ -13,6 +13,7 @@ import {
     MoodType
 } from '../types/radio_types';
 import { radioMonitor } from '../radio_monitor';
+import { getMicrosoftFullVoiceName } from '../voice_provider';
 
 // ================== Constants ==================
 
@@ -66,16 +67,77 @@ Pace: 适中，像电台主持人一样`;
 
 import { Cast, CastMember } from '../cast_system';
 
+const MAX_CONCURRENT = 5; // 最大并发数
+
 export class TTSAgent {
     private queue: TTSRequest[] = [];
     private cache: Map<string, ArrayBuffer> = new Map();
-    private activeCast: Cast | null = null; // 当前演员阵容
+    private activeCast: Cast | null = null;
+    private activeRequests = 0; // 当前并发数
+    private waitingQueue: Array<() => void> = []; // 等待队列
+    private abortController: AbortController | null = null; // 用于中止请求
+    private isAborted = false; // 中止标志
+
+    /**
+     * 获取并发槽位（最多 5 个并发）
+     */
+    private async acquireSlot(): Promise<void> {
+        if (this.activeRequests < MAX_CONCURRENT) {
+            this.activeRequests++;
+            return;
+        }
+        // 排队等待
+        return new Promise(resolve => {
+            this.waitingQueue.push(resolve);
+        });
+    }
+
+    /**
+     * 释放并发槽位
+     */
+    private releaseSlot(): void {
+        if (this.waitingQueue.length > 0) {
+            // 唤醒下一个等待的请求
+            const next = this.waitingQueue.shift();
+            next?.();
+        } else {
+            this.activeRequests--;
+        }
+    }
 
     /**
      * 设置当前演员阵容
      */
     setActiveCast(cast: Cast): void {
         this.activeCast = cast;
+    }
+
+    /**
+     * 中止所有进行中的请求
+     */
+    abort(): void {
+        this.isAborted = true;
+        // 中止正在进行的 fetch 请求
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        // 清空等待队列
+        this.waitingQueue.forEach(resolve => resolve());
+        this.waitingQueue = [];
+        this.activeRequests = 0;
+        // 重置状态
+        radioMonitor.updateStatus('TTS', 'IDLE', 'Aborted');
+    }
+
+    /**
+     * 重置中止状态（启动新会话时调用）
+     */
+    reset(): void {
+        this.isAborted = false;
+        this.abortController = null;
+        this.waitingQueue = [];
+        this.activeRequests = 0;
     }
 
     /**
@@ -142,9 +204,12 @@ export class TTSAgent {
             mood?: MoodType;
             customStyle?: string;
             priority?: number;
+            voiceName?: string;  // AI 指定的音色名（优先使用）
         }
     ): Promise<TTSResult> {
+        // 优先使用 AI 指定的音色名，否则通过 speaker 映射
         const voiceInfo = this.getVoiceForSpeaker(speaker);
+        const finalVoiceName = options?.voiceName || voiceInfo.voiceName;
 
         // 构建风格提示
         let stylePrompt = `# AUDIO PROFILE: ${speaker}\n## ${voiceInfo.description}\n`;
@@ -172,7 +237,7 @@ export class TTSAgent {
         const request: TTSRequest = {
             id: `tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             text,
-            voiceName: voiceInfo.voiceName,
+            voiceName: finalVoiceName,
             stylePrompt,
             priority: options?.priority || 5
         };
@@ -181,10 +246,13 @@ export class TTSAgent {
     }
 
     /**
-     * 处理单个请求（无速率限制，支持并发）
+     * 处理单个请求（最多 5 个并发）
      */
     private async processRequest(request: TTSRequest): Promise<TTSResult> {
         const retryCount = request.retryCount || 0;
+
+        // 获取并发槽位（超过 5 个则排队等待）
+        await this.acquireSlot();
 
         try {
             radioMonitor.updateStatus('TTS', 'BUSY', `Generating: ${request.text.slice(0, 15)}...`);
@@ -195,6 +263,8 @@ export class TTSAgent {
             this.cache.set(cacheKey, audioData);
 
             radioMonitor.updateStatus('TTS', 'READY', `Generated: ${request.text.slice(0, 10)}`);
+            // 成功：释放槽位并返回
+            this.releaseSlot();
             return {
                 id: request.id,
                 success: true,
@@ -210,19 +280,24 @@ export class TTSAgent {
                 const retryMatch = errorMsg.match(/retry in (\d+)/i);
                 const retryDelay = retryMatch ? parseInt(retryMatch[1]) * 1000 + 2000 : 47000;
                 console.log(`[TTS] Rate limited, retrying in ${retryDelay}ms...`);
+                // 释放槽位再重试
+                this.releaseSlot();
                 await this.delay(retryDelay);
                 request.retryCount = retryCount + 1;
                 return this.processRequest(request);
             }
 
             if (retryCount < MAX_RETRIES) {
-                // 普通重试
+                // 普通重试：释放槽位再重试
                 radioMonitor.updateStatus('TTS', 'BUSY', `Retrying (attempt ${retryCount + 1})...`);
+                this.releaseSlot();
                 await this.delay(RETRY_DELAY_MS * (retryCount + 1));
                 request.retryCount = retryCount + 1;
                 return this.processRequest(request);
             }
 
+            // 失败时释放槽位
+            this.releaseSlot();
             return {
                 id: request.id,
                 success: false,
@@ -232,9 +307,102 @@ export class TTSAgent {
     }
 
     /**
-     * 调用 Gemini TTS API
+     * 调用 TTS API（根据 ttsProvider 分发）
      */
     private async callTTSApi(request: TTSRequest): Promise<ArrayBuffer> {
+        const settings = getSettings();
+
+        if (settings.ttsProvider === 'microsoft') {
+            return this.callMicrosoftTTSApi(request.text, request.voiceName);
+        }
+
+        // Gemini TTS 调用逻辑
+        return this.callGeminiTTSApi(request);
+    }
+
+    /**
+     * 调用 Microsoft TTS API
+     * API 格式: GET /api/text-to-speech?voice=...&volume=...&rate=...&pitch=...&text=...
+     * Token: 优先使用自定义 token，留空则使用内置 token
+     */
+    private async callMicrosoftTTSApi(text: string, voiceName: string): Promise<ArrayBuffer> {
+        const settings = getSettings();
+
+        const endpoint = (settings.msTtsEndpoint || 'https://tts.cjack.top').replace(/\/$/, '');
+
+        // 获取 Microsoft 音色完整名称（支持直接指定或映射）
+        const msVoice = this.getMicrosoftVoiceName(voiceName);
+        const voice = encodeURIComponent(msVoice);
+
+        // 过滤掉舞台指令和描述文本 (括号内容)
+        const cleanText = this.filterStageDirections(text);
+        if (!cleanText.trim()) {
+            // 如果过滤后为空，返回静音
+            throw new Error('No text to speak after filtering stage directions');
+        }
+        const encodedText = encodeURIComponent(cleanText);
+
+        const url = `${endpoint}/api/text-to-speech?` +
+            `voice=${voice}&volume=100&rate=0&pitch=0&text=${encodedText}`;
+
+        // 优先使用自定义 token，留空则使用内置 token
+        const token = settings.msTtsAuthKey || 'tetr5354';
+        const headers: Record<string, string> = {
+            'Authorization': `Bearer ${token}`
+        };
+
+        radioMonitor.updateStatus('TTS', 'BUSY', `Microsoft TTS: ${cleanText.slice(0, 15)}...`);
+        radioMonitor.log('TTS', `Microsoft TTS [${msVoice.match(/\(([^)]+)\)/)?.[1] || 'Unknown'}]: ${cleanText.slice(0, 20)}...`, 'info');
+
+        // 创建 AbortController 用于中止请求
+        this.abortController = new AbortController();
+        const response = await fetch(url, { headers, signal: this.abortController.signal });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Microsoft TTS Error: ${response.status} - ${errorText}`);
+        }
+
+        return response.arrayBuffer();
+    }
+
+    /**
+     * 过滤舞台指令和描述文本
+     * 移除 (音乐声渐弱)、【旁白】 等内容
+     */
+    private filterStageDirections(text: string): string {
+        return text
+            // 移除中文括号内容 (舞台指令)
+            .replace(/（[^）]*）/g, '')
+            // 移除英文括号内容
+            .replace(/\([^)]*\)/g, '')
+            // 移除方括号内容 [旁白]
+            .replace(/\[[^\]]*\]/g, '')
+            // 移除中文方括号内容 【旁白】
+            .replace(/【[^】]*】/g, '')
+            // 清理多余空白
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    /**
+     * 获取 Microsoft TTS 完整音色名称
+     * 直接使用 AI 选择的微软音色名
+     */
+    private getMicrosoftVoiceName(voiceName: string): string {
+        // 1. 如果已经是完整的微软格式，直接返回
+        if (voiceName.includes('Microsoft Server Speech')) {
+            return voiceName;
+        }
+
+        // 2. 使用 voice_provider 查找微软音色完整名称
+        return getMicrosoftFullVoiceName(voiceName);
+    }
+
+    /**
+     * 调用 Gemini TTS API
+     */
+    private async callGeminiTTSApi(request: TTSRequest): Promise<ArrayBuffer> {
         const settings = getSettings();
 
         // 使用 TTS 专用配置，如果没有设置则使用主配置

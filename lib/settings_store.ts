@@ -5,6 +5,7 @@
 const STORAGE_KEY = "radio_nowhere_settings";
 
 export type ApiType = "openai" | "gemini" | "vertexai";
+export type TTSProvider = "gemini" | "microsoft";
 
 export interface IApiSettings {
     endpoint: string;      // API base URL (e.g., https://api.openai.com)
@@ -17,11 +18,20 @@ export interface IApiSettings {
     gcpLocation: string;   // GCP Region (e.g., us-central1)
 
     // TTS 独立配置
+    ttsProvider: TTSProvider;  // TTS 渠道: gemini 或 microsoft
     ttsEndpoint: string;   // TTS API Endpoint (留空则使用官方)
     ttsApiKey: string;     // TTS API Key (可以和主 key 不同)
     ttsModel: string;      // TTS Model name
-    ttsVoice: string;      // 默认语音
+    ttsVoice: string;      // 默认语音 (Gemini)
     ttsUseVertex: boolean; // 是否在 TTS 时使用 Vertex AI 配置
+
+    // Microsoft TTS 配置
+    msTtsEndpoint: string;     // Microsoft TTS API 地址 (默认: https://tts.cjack.top)
+    msTtsVoice: string;        // Microsoft 音色全名
+    msTtsVolume: number;       // 音量 (0-100)
+    msTtsRate: number;         // 语速 (-10 to 10)
+    msTtsPitch: number;        // 音调 (-10 to 10)
+    msTtsAuthKey: string;      // 可选的 Bearer token
 
     // 播放配置
     preloadBlockCount: number;  // 提前准备的 block 数量 (推荐: 3)
@@ -34,12 +44,22 @@ const DEFAULT_SETTINGS: IApiSettings = {
     apiType: "openai",
     gcpProject: "",
     gcpLocation: "us-central1",
+    // Gemini TTS
+    ttsProvider: "gemini",
     ttsEndpoint: "",
     ttsApiKey: "",
     ttsModel: "gemini-2.5-flash-preview-tts",
     ttsVoice: "Aoede",
     ttsUseVertex: false,
-    preloadBlockCount: 3,  // 推荐值: 3
+    // Microsoft TTS
+    msTtsEndpoint: "https://tts.cjack.top",
+    msTtsVoice: "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)",
+    msTtsVolume: 100,
+    msTtsRate: 0,
+    msTtsPitch: 0,
+    msTtsAuthKey: "",
+    // 播放配置
+    preloadBlockCount: 3,
 };
 
 // 可用的 TTS 语音列表
@@ -76,11 +96,21 @@ export function getSettings(): IApiSettings {
             apiType: parsed.apiType ?? DEFAULT_SETTINGS.apiType,
             gcpProject: parsed.gcpProject ?? DEFAULT_SETTINGS.gcpProject,
             gcpLocation: parsed.gcpLocation ?? DEFAULT_SETTINGS.gcpLocation,
+            // Gemini TTS
+            ttsProvider: parsed.ttsProvider ?? DEFAULT_SETTINGS.ttsProvider,
             ttsEndpoint: parsed.ttsEndpoint ?? DEFAULT_SETTINGS.ttsEndpoint,
             ttsApiKey: parsed.ttsApiKey ?? DEFAULT_SETTINGS.ttsApiKey,
             ttsModel: parsed.ttsModel ?? DEFAULT_SETTINGS.ttsModel,
             ttsVoice: parsed.ttsVoice ?? DEFAULT_SETTINGS.ttsVoice,
             ttsUseVertex: parsed.ttsUseVertex ?? DEFAULT_SETTINGS.ttsUseVertex,
+            // Microsoft TTS
+            msTtsEndpoint: parsed.msTtsEndpoint ?? DEFAULT_SETTINGS.msTtsEndpoint,
+            msTtsVoice: parsed.msTtsVoice ?? DEFAULT_SETTINGS.msTtsVoice,
+            msTtsVolume: parsed.msTtsVolume ?? DEFAULT_SETTINGS.msTtsVolume,
+            msTtsRate: parsed.msTtsRate ?? DEFAULT_SETTINGS.msTtsRate,
+            msTtsPitch: parsed.msTtsPitch ?? DEFAULT_SETTINGS.msTtsPitch,
+            msTtsAuthKey: parsed.msTtsAuthKey ?? DEFAULT_SETTINGS.msTtsAuthKey,
+            // 播放配置
             preloadBlockCount: parsed.preloadBlockCount ?? DEFAULT_SETTINGS.preloadBlockCount,
         };
     } catch (e) {

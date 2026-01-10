@@ -70,9 +70,9 @@ export class AudioMixer {
     private musicHowl: Howl | null = null;
     private voiceHowl: Howl | null = null;
 
-    private musicVolume = 0.7;
+    private musicVolume = 0.9;  // 提高音乐音量
     private voiceVolume = 1.0;
-    private masterVolume = 0.8;
+    private masterVolume = 0.85;  // 稍微提高主音量
 
     private fadeInterval: NodeJS.Timeout | null = null;
 
@@ -202,9 +202,15 @@ export class AudioMixer {
      * Gemini TTS 返回 PCM 格式，需要转换为 WAV
      */
     async playVoice(audioData: ArrayBuffer): Promise<void> {
+        // 验证音频数据
+        if (!audioData || audioData.byteLength < 100) {
+            console.warn('[AudioMixer] Invalid audio data, skipping playback');
+            return; // 静默跳过，不中断播放流程
+        }
+
         // 先确保上一个语音完全停止
         if (this.voiceHowl) {
-            this.voiceHowl.stop(); // 触发 onstop 回调，resolve 上一个 Promise
+            this.voiceHowl.stop();
             this.voiceHowl.unload();
             this.voiceHowl = null;
         }
@@ -212,43 +218,48 @@ export class AudioMixer {
         // 语音间隔小停顿（200ms）让过渡更自然
         await new Promise(r => setTimeout(r, 200));
 
-        return new Promise((resolve, reject) => {
-            // 将 PCM 转换为 WAV 格式
-            const wavData = pcmToWav(audioData);
-            const blob = new Blob([wavData], { type: 'audio/wav' });
-            const url = URL.createObjectURL(blob);
+        return new Promise((resolve) => {
+            try {
+                // 将 PCM 转换为 WAV 格式
+                const wavData = pcmToWav(audioData);
+                const blob = new Blob([wavData], { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
 
-            // 保存 resolve 以便 stopVoice 可以调用
-            this.voiceResolve = () => {
-                URL.revokeObjectURL(url);
-                resolve();
-            };
+                // 保存 resolve 以便 stopVoice 可以调用
+                this.voiceResolve = () => {
+                    URL.revokeObjectURL(url);
+                    resolve();
+                };
 
-            this.voiceHowl = new Howl({
-                src: [url],
-                format: ['wav'],
-                volume: this.voiceVolume,
-                onend: () => {
-                    // 音频播完后增加 300ms 缓冲，防止末尾吞字
-                    setTimeout(() => {
+                this.voiceHowl = new Howl({
+                    src: [url],
+                    format: ['wav'],
+                    volume: this.voiceVolume,
+                    onend: () => {
+                        // 音频播完后增加 300ms 缓冲，防止末尾吞字
+                        setTimeout(() => {
+                            this.voiceResolve?.();
+                            this.voiceResolve = null;
+                        }, 300);
+                    },
+                    onstop: () => {
                         this.voiceResolve?.();
                         this.voiceResolve = null;
-                    }, 300);
-                },
-                onstop: () => {
-                    // 被 stop() 调用时也 resolve
-                    this.voiceResolve?.();
-                    this.voiceResolve = null;
-                },
-                onloaderror: (_, error) => {
-                    URL.revokeObjectURL(url);
-                    this.voiceResolve = null;
-                    console.error('Voice load error:', error);
-                    reject(error);
-                }
-            });
+                    },
+                    onloaderror: (_, error) => {
+                        URL.revokeObjectURL(url);
+                        console.warn('[AudioMixer] Voice decode failed, skipping:', error);
+                        // 优雅处理：resolve 而不是 reject，避免中断播放流程
+                        this.voiceResolve = null;
+                        resolve();
+                    }
+                });
 
-            this.voiceHowl.play();
+                this.voiceHowl.play();
+            } catch (e) {
+                console.warn('[AudioMixer] Voice conversion failed:', e);
+                resolve(); // 优雅处理，继续播放下一段
+            }
         });
     }
 
@@ -324,7 +335,10 @@ export class AudioMixer {
         this.stopVoice();
         if (this.fadeInterval) {
             clearInterval(this.fadeInterval);
+            this.fadeInterval = null;
         }
+        // 强制停止所有 Howler 音频（包括可能遗漏的）
+        Howler.unload();
     }
 
     /**

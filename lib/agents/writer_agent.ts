@@ -10,6 +10,7 @@ import {
 } from '../types/radio_types';
 import { globalState } from '../global_state';
 import { radioMonitor } from '../radio_monitor';
+import { getVoiceListForPrompt } from '../voice_provider';
 
 // ================== Constants ==================
 
@@ -233,6 +234,7 @@ ${castDescription}
       "scripts": [
         {
           "speaker": "host1",
+          "voiceName": "音色ID",
           "text": "台词内容",
           "mood": "warm",
           "voiceStyle": "温柔地说"
@@ -303,6 +305,8 @@ ${castDescription}
 4. **内容深入**：话题展开要详细，不要蜻蜓点水
 5. **情感丰富**：台词要有感情起伏，设置合适的 mood 和 voiceStyle
 6. **节目节奏**：可以是 [对话] → [音乐完整播放] → [评论] → [背景音乐+聊天]
+
+${getVoiceListForPrompt()}
 `;
 
         if (theme) {

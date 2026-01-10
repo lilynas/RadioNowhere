@@ -140,11 +140,12 @@ export interface TalkBlock {
 
 /** 台词行 */
 export interface ScriptLine {
-  speaker: SpeakerId;
+  speaker: SpeakerId | string;  // 支持动态角色名
   text: string;
-  mood?: MoodType;            // 情绪
-  voiceStyle?: string;        // TTS 风格指令（自然语言）
-  pause?: number;             // 台词后暂停毫秒数
+  voiceName?: string;           // TTS 音色名称（AI 可直接指定）
+  mood?: MoodType;              // 情绪
+  voiceStyle?: string;          // TTS 风格指令（自然语言）
+  pause?: number;               // 台词后暂停毫秒数
 }
 
 /** 音乐播放块 */

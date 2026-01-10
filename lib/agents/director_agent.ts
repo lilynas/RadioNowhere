@@ -70,6 +70,7 @@ export class DirectorAgent {
         }
 
         this.isRunning = true;
+        ttsAgent.reset();  // 重置 TTS Agent 中止状态
 
         // 保存回调
         if (options) {
@@ -334,11 +335,17 @@ export class DirectorAgent {
     stopShow(): void {
         this.isRunning = false;
         audioMixer.stopAll();
+        ttsAgent.abort();  // 中止所有 TTS 请求
         this.context = null;
         this.preparedAudio.clear();
         this.nextTimeline = null;
         this.isPreparingNext = false;
         globalState.reset();
+        // 重置所有 Agent 状态
+        radioMonitor.updateStatus('DIRECTOR', 'IDLE', 'Disconnected');
+        radioMonitor.updateStatus('WRITER', 'IDLE', 'Disconnected');
+        radioMonitor.updateStatus('TTS', 'IDLE', 'Disconnected');
+        radioMonitor.updateStatus('MIXER', 'IDLE', 'Disconnected');
     }
 
     /**
@@ -469,7 +476,8 @@ export class DirectorAgent {
                     {
                         mood: script.mood,
                         customStyle: script.voiceStyle,
-                        priority: 8
+                        priority: 8,
+                        voiceName: script.voiceName  // 传递 AI 指定的音色
                     }
                 );
 
@@ -567,6 +575,9 @@ export class DirectorAgent {
             if (!this.isRunning) break;
             if (this.skipRequested) continue; // 有新的跳转请求，立即处理
 
+            // 防止 disconnect 后 context 被清空
+            if (!this.context) break;
+
             const block = timeline.blocks[this.context.currentBlockIndex];
 
             // 通知块开始
@@ -578,13 +589,23 @@ export class DirectorAgent {
                 await this.executeBlock(block);
 
                 // 如果有跳转请求，不触发 onBlockEnd
-                if (!this.skipRequested) {
+                if (!this.skipRequested && this.context) {
                     this.context.onBlockEnd?.(block);
                 }
             } catch (error) {
+                // 忽略 abort 错误
+                if ((error as Error).name === 'AbortError') {
+                    console.log('[Director] Request aborted');
+                    break;
+                }
                 console.error('Block execution error:', error);
-                this.context.onError?.(error as Error, block);
+                if (this.context) {
+                    this.context.onError?.(error as Error, block);
+                }
             }
+
+            // 防止 disconnect 后 context 被清空
+            if (!this.context) break;
 
             // 如果有跳转请求，不自动递增
             if (!this.skipRequested) {
@@ -698,7 +719,7 @@ export class DirectorAgent {
                     const result = await ttsAgent.generateSpeech(
                         script.text,
                         script.speaker,
-                        { mood: script.mood, customStyle: script.voiceStyle }
+                        { mood: script.mood, customStyle: script.voiceStyle, voiceName: script.voiceName }
                     );
                     if (result.success && result.audioData) {
                         await audioMixer.playVoice(result.audioData);
