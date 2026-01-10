@@ -17,6 +17,7 @@ import { ttsAgent } from './tts_agent';
 import { audioMixer } from '../audio_mixer';
 import { searchMusic, getMusicUrl, IGDMusicTrack } from '../gdmusic_service';
 import { globalState } from '../global_state';
+import { radioMonitor } from '../radio_monitor';
 
 // ================== Types ==================
 
@@ -43,6 +44,10 @@ export class DirectorAgent {
     private nextTimeline: ShowTimeline | null = null;
     private isPreparingNext = false;
 
+    // 跳转请求标志
+    private skipRequested = false;
+    private targetBlockIndex = -1;
+
     /**
      * 启动电台节目
      */
@@ -62,35 +67,117 @@ export class DirectorAgent {
 
         this.isRunning = true;
 
-        // 1. 生成节目时间线 (300秒 = 5分钟)
-        const timeline = await writerAgent.generateTimeline(
-            300,
-            options?.theme,
-            options?.userRequest
-        );
+        // 保存回调
+        if (options) {
+            this.context = {
+                timeline: { id: 'init', title: 'Initializing', blocks: [], estimatedDuration: 0 },
+                currentBlockIndex: 0,
+                isPaused: false,
+                onStateChange: options.onStateChange,
+                onBlockStart: options.onBlockStart,
+                onBlockEnd: options.onBlockEnd,
+                onError: options.onError,
+                onTimelineReady: options.onTimelineReady
+            };
+        }
 
-        console.log('Generated timeline:', timeline);
+        // 开始执行循环
+        await this.runShowLoop(options?.theme, options?.userRequest);
+    }
 
-        // 通知 timeline 准备完成
-        options?.onTimelineReady?.(timeline);
+    /**
+     * 内部主运行循环
+     */
+    private async runShowLoop(theme?: string, userRequest?: string): Promise<void> {
+        console.log('[Director] Entering show loop...');
+        radioMonitor.updateStatus('DIRECTOR', 'READY', 'Ready to start loop');
 
-        // 2. 初始化执行上下文
-        this.context = {
-            timeline,
-            currentBlockIndex: 0,
-            isPaused: false,
-            onStateChange: options?.onStateChange,
-            onBlockStart: options?.onBlockStart,
-            onBlockEnd: options?.onBlockEnd,
-            onError: options?.onError,
-            onTimelineReady: options?.onTimelineReady
-        };
+        while (this.isRunning) {
+            try {
+                // 1. 生成节目时间线
+                const duration = 300; // 5分钟
+                console.log(`[Director] Generating new timeline (${duration}s)...`);
+                radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Generating timeline...');
 
-        // 3. 预处理前几个块
-        await this.prepareBlocks(0, 3);
+                const timeline = await writerAgent.generateTimeline(
+                    duration,
+                    theme,
+                    userRequest
+                );
 
-        // 4. 开始执行
-        await this.executeTimeline();
+                console.log('[Director] New timeline generated:', timeline.id, 'with', timeline.blocks.length, 'blocks');
+                radioMonitor.emitTimeline(timeline);
+
+                // 同步演员阵容到 TTS Agent
+                const cast = writerAgent.getCurrentCast();
+                if (cast) {
+                    ttsAgent.setActiveCast(cast);
+                }
+
+                // 更新上下文
+                if (this.context) {
+                    this.context.timeline = timeline;
+                    this.context.currentBlockIndex = 0;
+                    this.context.onTimelineReady?.(timeline);
+                } else {
+                    this.context = {
+                        timeline,
+                        currentBlockIndex: 0,
+                        isPaused: false,
+                    };
+                }
+
+                // 2. 预处理
+                radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Preparing audio...');
+                await this.prepareBlocks(0, 3);
+
+                // 3. 执行当前时间线
+                radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Executing show...');
+                radioMonitor.log('DIRECTOR', `Beginning execution of timeline: ${timeline.id}`, 'info', { blockCount: timeline.blocks.length });
+                await this.executeTimeline();
+
+                // 播完一段后的清理
+                this.preparedAudio.clear();
+
+                // 如果有听众来信，第一轮播完后清除，避免循环播放同一封信
+                userRequest = undefined;
+
+            } catch (error) {
+                console.error('[Director] Loop error:', error);
+                radioMonitor.updateStatus('DIRECTOR', 'ERROR', String(error));
+                this.context?.onError?.(error as Error);
+                await this.delay(5000); // 出错后等待 5 秒重试
+            }
+        }
+
+        radioMonitor.updateStatus('DIRECTOR', 'IDLE', 'Show ended');
+        console.log('[Director] Show loop ended.');
+    }
+
+    /**
+     * 搜索并播放开场音乐
+     */
+    private async searchAndPlayIntroMusic(): Promise<string | null> {
+        // 根据时段选择不同风格的开场音乐
+        const hour = new Date().getHours();
+        let keyword = 'lofi chill';
+
+        if (hour >= 6 && hour < 9) {
+            keyword = 'morning upbeat positive';
+        } else if (hour >= 9 && hour < 18) {
+            keyword = 'work focus ambient';
+        } else if (hour >= 18 && hour < 21) {
+            keyword = 'evening jazz relaxing';
+        } else {
+            keyword = 'night lofi sleep';
+        }
+
+        try {
+            const result = await audioMixer.playMusicFromSearch(keyword);
+            return result ? keyword : null;
+        } catch {
+            return null;
+        }
     }
 
     /**
@@ -124,6 +211,70 @@ export class DirectorAgent {
             this.context.isPaused = false;
             audioMixer.resumeAll();
         }
+    }
+
+    /**
+     * 跳到下一段
+     */
+    skipToNext(): void {
+        if (!this.context) return;
+
+        const { timeline } = this.context;
+        const nextIndex = this.context.currentBlockIndex + 1;
+
+        if (nextIndex < timeline.blocks.length) {
+            // 停止当前音频
+            audioMixer.stopAll();
+            // 设置索引（executeTimeline 会在下一循环执行新块）
+            this.context.currentBlockIndex = nextIndex - 1; // -1 因为循环末尾会 +1
+            console.log('[Director] Skip to next:', nextIndex);
+        }
+    }
+
+    /**
+     * 跳到上一段
+     */
+    skipToPrevious(): void {
+        if (!this.context) return;
+
+        const prevIndex = this.context.currentBlockIndex - 1;
+
+        if (prevIndex >= 0) {
+            // 停止当前音频
+            audioMixer.stopAll();
+            // 设置索引
+            this.context.currentBlockIndex = prevIndex - 1; // -1 因为循环末尾会 +1
+            console.log('[Director] Skip to previous:', prevIndex);
+        }
+    }
+
+    /**
+     * 跳到指定段落
+     */
+    skipToBlock(index: number): void {
+        if (!this.context) return;
+
+        const { timeline } = this.context;
+
+        if (index >= 0 && index < timeline.blocks.length) {
+            // 设置跳转请求标志
+            this.skipRequested = true;
+            this.targetBlockIndex = index;
+            // 立即停止当前音频
+            audioMixer.stopAll();
+            console.log('[Director] Skip requested to block:', index);
+        }
+    }
+
+    /**
+     * 获取当前播放信息
+     */
+    getPlaybackInfo(): { current: number; total: number } | null {
+        if (!this.context) return null;
+        return {
+            current: this.context.currentBlockIndex,
+            total: this.context.timeline.blocks.length
+        };
     }
 
     /**
@@ -206,80 +357,54 @@ export class DirectorAgent {
         const { timeline } = this.context;
 
         while (this.isRunning && this.context.currentBlockIndex < timeline.blocks.length) {
+            // 检查跳转请求
+            if (this.skipRequested) {
+                this.skipRequested = false;
+                if (this.targetBlockIndex >= 0 && this.targetBlockIndex < timeline.blocks.length) {
+                    this.context.currentBlockIndex = this.targetBlockIndex;
+                    this.targetBlockIndex = -1;
+                    console.log('[Director] Jumped to block:', this.context.currentBlockIndex);
+                    // 预处理新位置的块
+                    await this.prepareBlocks(this.context.currentBlockIndex, 2);
+                }
+            }
+
             // 检查暂停状态
-            while (this.context.isPaused && this.isRunning) {
+            while (this.context.isPaused && this.isRunning && !this.skipRequested) {
                 await this.delay(100);
             }
 
             if (!this.isRunning) break;
+            if (this.skipRequested) continue; // 有新的跳转请求，立即处理
 
             const block = timeline.blocks[this.context.currentBlockIndex];
 
             // 通知块开始
             this.context.onBlockStart?.(block, this.context.currentBlockIndex);
+            radioMonitor.emitScript(block.type === 'talk' ? 'host1' : 'system', `Playing: ${block.type}`, block.id);
 
             try {
-                // 执行块
+                // 执行块（会在跳转时被中断）
                 await this.executeBlock(block);
 
-                // 通知块结束
-                this.context.onBlockEnd?.(block);
+                // 如果有跳转请求，不触发 onBlockEnd
+                if (!this.skipRequested) {
+                    this.context.onBlockEnd?.(block);
+                }
             } catch (error) {
                 console.error('Block execution error:', error);
                 this.context.onError?.(error as Error, block);
             }
 
-            // 移动到下一个块
-            this.context.currentBlockIndex++;
+            // 如果有跳转请求，不自动递增
+            if (!this.skipRequested) {
+                this.context.currentBlockIndex++;
 
-            // 双缓冲策略：播放当前块时预处理后续块
-            const remainingBlocks = timeline.blocks.length - this.context.currentBlockIndex;
-
-            // 预处理下一个块（不等待）
-            if (remainingBlocks > 0) {
-                this.prepareBlocks(this.context.currentBlockIndex, 2);
-            }
-
-            // 当剩余块少于 3 个时，开始预生成下一段时间线
-            if (remainingBlocks <= 3 && !this.isPreparingNext && !this.nextTimeline) {
-                this.prepareNextTimeline();
-            }
-        }
-
-        // 时间线执行完毕，使用预生成的下一段（如有）
-        if (this.isRunning) {
-            if (this.nextTimeline) {
-                // 使用已准备好的下一段
-                const nextTL = this.nextTimeline;
-                this.nextTimeline = null;
-                this.isPreparingNext = false;
-
-                // 通知新时间线准备完成 - 更新 UI
-                this.context?.onTimelineReady?.(nextTL);
-
-                this.context = {
-                    timeline: nextTL,
-                    currentBlockIndex: 0,
-                    isPaused: false,
-                    onStateChange: this.context?.onStateChange,
-                    onBlockStart: this.context?.onBlockStart,
-                    onBlockEnd: this.context?.onBlockEnd,
-                    onError: this.context?.onError,
-                    onTimelineReady: this.context?.onTimelineReady
-                };
-
-                // 预处理前几块
-                await this.prepareBlocks(0, 3);
-                await this.executeTimeline();
-            } else {
-                // 没有预生成，立即生成（备选）
-                await this.startShow({
-                    onStateChange: this.context?.onStateChange,
-                    onBlockStart: this.context?.onBlockStart,
-                    onBlockEnd: this.context?.onBlockEnd,
-                    onError: this.context?.onError,
-                    onTimelineReady: this.context?.onTimelineReady
-                });
+                // 预处理后续块
+                const remainingBlocks = timeline.blocks.length - this.context.currentBlockIndex;
+                if (remainingBlocks > 0) {
+                    this.prepareBlocks(this.context.currentBlockIndex, 3);
+                }
             }
         }
     }
@@ -322,6 +447,7 @@ export class DirectorAgent {
 
         for (let i = startIndex; i < endIndex; i++) {
             const block = timeline.blocks[i];
+            radioMonitor.log('DIRECTOR', `Preparing block ${i + 1}/${timeline.blocks.length}: ${block.type}`, 'trace');
             if (block.type === 'talk') {
                 preparePromises.push(this.prepareTalkBlock(block));
             } else if (block.type === 'music') {
@@ -376,6 +502,12 @@ export class DirectorAgent {
 
         // 播放所有台词
         for (const script of block.scripts) {
+            // 检测跳转请求，立即中断
+            if (!this.isRunning || this.skipRequested) break;
+
+            // 发出脚本开始事件
+            radioMonitor.emitScript(script.speaker, script.text, block.id);
+
             const audioId = `${block.id}-${script.speaker}-${script.text.slice(0, 20)}`;
             const audioData = this.preparedAudio.get(audioId);
 

@@ -338,6 +338,35 @@ export class AudioMixer {
             }
         };
     }
+
+    /**
+     * 搜索并播放音乐（便捷方法）
+     */
+    async playMusicFromSearch(keyword: string): Promise<boolean> {
+        try {
+            // 动态导入避免循环依赖
+            const { getRandomTrack, getMusicUrl } = await import('./gdmusic_service');
+
+            const track = await getRandomTrack(keyword);
+            if (!track) {
+                console.warn('[AudioMixer] No track found for:', keyword);
+                return false;
+            }
+
+            const url = await getMusicUrl(track.id, 320, track.source);
+            if (!url) {
+                console.warn('[AudioMixer] Failed to get URL for:', track.name);
+                return false;
+            }
+
+            await this.playMusic(url, { fadeIn: 1000 });
+            console.log('[AudioMixer] Playing:', track.name, '-', track.artist.join(', '));
+            return true;
+        } catch (error) {
+            console.error('[AudioMixer] playMusicFromSearch error:', error);
+            return false;
+        }
+    }
 }
 
 // 单例导出

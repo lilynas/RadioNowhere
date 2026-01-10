@@ -17,10 +17,13 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         apiKey: "",
         modelName: "gpt-4o",
         apiType: "openai",
+        gcpProject: "",
+        gcpLocation: "us-central1",
         ttsEndpoint: "",
         ttsApiKey: "",
         ttsModel: "gemini-2.5-flash-preview-tts",
         ttsVoice: "Aoede",
+        ttsUseVertex: false,
     });
     const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
     const [testMessage, setTestMessage] = useState("");
@@ -30,6 +33,10 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     const [models, setModels] = useState<string[]>([]);
     const [loadingModels, setLoadingModels] = useState(false);
     const [showModelDropdown, setShowModelDropdown] = useState(false);
+
+    // TTS test state
+    const [ttsTestStatus, setTtsTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
+    const [ttsTestMessage, setTtsTestMessage] = useState("");
 
     // Load settings on mount
     useEffect(() => {
@@ -81,9 +88,100 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         }
     };
 
-    const handleChange = (field: keyof IApiSettings, value: string) => {
-        setSettings((prev) => ({ ...prev, [field]: value }));
+    const handleChange = (field: keyof IApiSettings, value: string | boolean) => {
         setSaved(false);
+
+        // 自动填充默认 URL
+        if (field === 'apiType') {
+            const apiTypeValue = value as ApiType;
+
+            setSettings(prev => {
+                let defaultEndpoint = prev.endpoint;
+                let defaultModel = prev.modelName;
+
+                if (apiTypeValue === 'gemini') {
+                    defaultEndpoint = 'https://generativelanguage.googleapis.com';
+                    defaultModel = 'gemini-2.5-flash';
+                } else if (apiTypeValue === 'vertexai') {
+                    defaultEndpoint = '';
+                    defaultModel = 'gemini-2.5-flash';
+                } else if (apiTypeValue === 'openai') {
+                    defaultEndpoint = '';
+                    defaultModel = 'gpt-4o';
+                }
+
+                return {
+                    ...prev,
+                    apiType: apiTypeValue,
+                    endpoint: defaultEndpoint,
+                    modelName: defaultModel
+                };
+            });
+        } else {
+            setSettings((prev) => ({ ...prev, [field]: value }));
+        }
+    };
+
+    const handleTtsTest = async () => {
+        setTtsTestStatus("testing");
+        setTtsTestMessage("正在测试 TTS...");
+
+        const ttsKey = settings.ttsApiKey || settings.apiKey;
+        if (!ttsKey) {
+            setTtsTestStatus("error");
+            setTtsTestMessage("请先填写 API Key");
+            return;
+        }
+
+        try {
+            let apiUrl = '';
+            let method = 'POST';
+            let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+            if (settings.apiType === 'vertexai' && settings.ttsUseVertex) {
+                // Vertex AI TTS Test
+                const model = settings.ttsModel || 'gemini-2.5-flash';
+                const isGcpApiKey = settings.apiKey.startsWith('AIza');
+                apiUrl = `https://${settings.gcpLocation}-aiplatform.googleapis.com/v1/projects/${settings.gcpProject}/locations/${settings.gcpLocation}/publishers/google/models/${model}:generateContent` + (isGcpApiKey ? `?key=${settings.apiKey}` : '');
+
+                if (!isGcpApiKey) {
+                    headers['Authorization'] = `Bearer ${settings.apiKey}`;
+                }
+            } else {
+                // Gemini Native TTS Test
+                apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent';
+                headers['x-goog-api-key'] = ttsKey;
+            }
+
+            const response = await fetch('/api/proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: apiUrl,
+                    method,
+                    headers,
+                    body: {
+                        contents: [{ role: "user", parts: [{ text: '测试' }] }],
+                        generationConfig: {
+                            responseModalities: ['AUDIO'],
+                            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } } }
+                        }
+                    }
+                })
+            });
+
+            if (response.ok) {
+                setTtsTestStatus("success");
+                setTtsTestMessage("✅ TTS 连接成功!");
+            } else {
+                const err = await response.text();
+                setTtsTestStatus("error");
+                setTtsTestMessage(`❌ ${response.status}: ${err.slice(0, 50)}`);
+            }
+        } catch (e) {
+            setTtsTestStatus("error");
+            setTtsTestMessage(`❌ 连接失败: ${e}`);
+        }
     };
 
     const handleSelectModel = (model: string) => {
@@ -113,7 +211,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                         className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-md mx-auto bg-neutral-900 border border-neutral-700 rounded-2xl z-101 overflow-hidden shadow-2xl max-h-[85vh] overflow-y-auto"
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 sticky top-0 bg-neutral-900">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 sticky top-0 bg-neutral-900 z-20">
                             <h2 className="text-lg font-semibold text-white tracking-wide">API Settings</h2>
                             <button
                                 onClick={onClose}
@@ -129,7 +227,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-neutral-400">API Type</label>
                                 <div className="flex gap-2">
-                                    {(["openai", "gemini"] as ApiType[]).map((type) => (
+                                    {(["openai", "gemini", "vertexai"] as ApiType[]).map((type) => (
                                         <button
                                             key={type}
                                             onClick={() => handleChange("apiType", type)}
@@ -138,44 +236,86 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                                 : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
                                                 }`}
                                         >
-                                            {type === "openai" ? "OpenAI" : "Gemini"}
+                                            {type === "openai" ? "OpenAI" : type === "gemini" ? "Gemini" : "Vertex"}
                                         </button>
                                     ))}
                                 </div>
-                                <p className="text-xs text-neutral-500">
+                                <div className="text-xs text-neutral-500 mb-4 px-1">
                                     {settings.apiType === "openai"
-                                        ? "OpenAI, DeepSeek, Groq, Ollama, etc."
-                                        : "Google Gemini native API format"
-                                    }
-                                </p>
+                                        ? "兼容 OpenAI 格式的服务 (如 DeepSeek, Groq 等)"
+                                        : settings.apiType === "gemini"
+                                            ? "Google AI Studio 原生接口 (推荐 API Key 用户)"
+                                            : "Google Cloud Vertex AI (仅支持 OAuth 认证)"}
+                                </div>
                             </div>
 
-                            {/* Endpoint */}
+                            {/* API Key / Access Token Input */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-neutral-400">API Endpoint</label>
-                                <input
-                                    type="text"
-                                    value={settings.endpoint}
-                                    onChange={(e) => handleChange("endpoint", e.target.value)}
-                                    placeholder={settings.apiType === "openai"
-                                        ? "https://api.openai.com"
-                                        : "https://generativelanguage.googleapis.com"
-                                    }
-                                    className="w-full px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 transition-colors"
-                                />
-                            </div>
-
-                            {/* API Key */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-neutral-400">API Key</label>
+                                <label className="text-sm font-medium text-neutral-400">
+                                    {settings.apiType === 'vertexai' ? "Access Token" : "API Key"}
+                                </label>
                                 <input
                                     type="password"
                                     value={settings.apiKey}
                                     onChange={(e) => handleChange("apiKey", e.target.value)}
-                                    placeholder="sk-..."
+                                    placeholder={settings.apiType === 'vertexai' ? "ya29.a0AfH6S..." : "sk-..."}
                                     className="w-full px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 transition-colors"
                                 />
                             </div>
+
+                            {/* Vertex AI Specific Fields */}
+                            {settings.apiType === "vertexai" && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    className="space-y-4"
+                                >
+                                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200">
+                                        <p className="font-bold flex items-center gap-1 mb-1">
+                                            <AlertCircle size={12} /> Vertex AI 验证方式
+                                        </p>
+                                        <p>Vertex 节点需使用 OAuth <strong>Access Token</strong> (1小时有效)。</p>
+                                        <p className="mt-1"><strong>获取方式：</strong>在 GCP 控制台右上角打开 <strong>Cloud Shell</strong> 并输入 <code>gcloud auth print-access-token</code>。</p>
+                                        <p className="mt-2 opacity-80 italic border-t border-amber-500/20 pt-1">提示: 如果追求永久有效，请改用【Gemini】频道并填入 API Key (AIza...)。</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-neutral-400">GCP Project ID</label>
+                                        <input
+                                            type="text"
+                                            value={settings.gcpProject}
+                                            onChange={(e) => handleChange("gcpProject", e.target.value)}
+                                            placeholder="my-project-id"
+                                            className="w-full px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-neutral-400">GCP Location</label>
+                                        <input
+                                            type="text"
+                                            value={settings.gcpLocation}
+                                            onChange={(e) => handleChange("gcpLocation", e.target.value)}
+                                            placeholder="us-central1"
+                                            className="w-full px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                                        />
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {settings.apiType !== "vertexai" && (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-neutral-400">API Endpoint</label>
+                                    <input
+                                        type="text"
+                                        value={settings.endpoint}
+                                        onChange={(e) => handleChange("endpoint", e.target.value)}
+                                        placeholder={settings.apiType === "openai"
+                                            ? "https://api.openai.com"
+                                            : "https://generativelanguage.googleapis.com"
+                                        }
+                                        className="w-full px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                                    />
+                                </div>
+                            )}
 
                             {/* Model Name with Dropdown */}
                             <div className="space-y-2">
@@ -215,7 +355,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                                 initial={{ opacity: 0, y: -10 }}
                                                 animate={{ opacity: 1, y: 0 }}
                                                 exit={{ opacity: 0, y: -10 }}
-                                                className="absolute top-full left-0 right-0 mt-2 bg-neutral-800 border border-neutral-700 rounded-xl overflow-hidden z-10 max-h-48 overflow-y-auto"
+                                                className="absolute top-full left-0 right-0 mt-2 bg-neutral-800 border border-neutral-700 rounded-xl overflow-hidden z-10 max-h-48 overflow-y-auto shadow-xl"
                                             >
                                                 {models.map((model) => (
                                                     <button
@@ -262,8 +402,19 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                             )}
 
                             {/* Divider */}
-                            <div className="border-t border-neutral-800 pt-4">
-                                <h3 className="text-sm font-semibold text-neutral-300 mb-3">🎤 TTS Settings</h3>
+                            <div className="border-t border-neutral-800 pt-4 flex items-center justify-between">
+                                <h3 className="text-sm font-semibold text-neutral-300">🎤 TTS Settings</h3>
+                                {settings.apiType === 'vertexai' && (
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={settings.ttsUseVertex}
+                                            onChange={(e) => handleChange("ttsUseVertex", e.target.checked)}
+                                            className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 bg-neutral-800 border-neutral-700"
+                                        />
+                                        <span className="text-xs text-neutral-400">共用 Vertex 配置</span>
+                                    </label>
+                                )}
                             </div>
 
                             {/* TTS Endpoint */}
@@ -356,13 +507,37 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                 <p className="text-xs text-neutral-500">
                                     支持中英日等 24 种语言自动识别，AI 可动态选择不同音色
                                 </p>
+
+                                {/* TTS Test Button */}
+                                <button
+                                    onClick={handleTtsTest}
+                                    disabled={!settings.apiKey || ttsTestStatus === "testing"}
+                                    className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors text-sm"
+                                >
+                                    {ttsTestStatus === "testing" ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                        <Zap size={14} />
+                                    )}
+                                    测试 TTS 语音
+                                </button>
+
+                                {/* TTS Test Result */}
+                                {ttsTestStatus !== "idle" && (
+                                    <div className={`text-xs p-2 rounded-lg ${ttsTestStatus === "success" ? "bg-emerald-500/20 text-emerald-400" :
+                                        ttsTestStatus === "error" ? "bg-red-500/20 text-red-400" :
+                                            "bg-neutral-700 text-neutral-300"
+                                        }`}>
+                                        {ttsTestMessage}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Actions */}
                             <div className="flex gap-3 pt-2">
                                 <button
                                     onClick={handleTest}
-                                    disabled={!settings.endpoint || !settings.apiKey || testStatus === "testing"}
+                                    disabled={!settings.apiKey || testStatus === "testing"}
                                     className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors"
                                 >
                                     <Zap size={18} />

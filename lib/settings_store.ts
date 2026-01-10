@@ -4,7 +4,7 @@
 
 const STORAGE_KEY = "radio_nowhere_settings";
 
-export type ApiType = "openai" | "gemini";
+export type ApiType = "openai" | "gemini" | "vertexai";
 
 export interface IApiSettings {
     endpoint: string;      // API base URL (e.g., https://api.openai.com)
@@ -12,11 +12,16 @@ export interface IApiSettings {
     modelName: string;     // Model name (e.g., gpt-4o, gemini-2.5-flash)
     apiType: ApiType;      // API format type: openai or gemini
 
+    // Vertex AI 特定配置
+    gcpProject: string;    // GCP Project ID
+    gcpLocation: string;   // GCP Region (e.g., us-central1)
+
     // TTS 独立配置
     ttsEndpoint: string;   // TTS API Endpoint (留空则使用官方)
     ttsApiKey: string;     // TTS API Key (可以和主 key 不同)
     ttsModel: string;      // TTS Model name
     ttsVoice: string;      // 默认语音
+    ttsUseVertex: boolean; // 是否在 TTS 时使用 Vertex AI 配置
 }
 
 const DEFAULT_SETTINGS: IApiSettings = {
@@ -24,10 +29,13 @@ const DEFAULT_SETTINGS: IApiSettings = {
     apiKey: "",
     modelName: "gpt-4o",
     apiType: "openai",
+    gcpProject: "",
+    gcpLocation: "us-central1",
     ttsEndpoint: "",
     ttsApiKey: "",
     ttsModel: "gemini-2.5-flash-preview-tts",
     ttsVoice: "Aoede",
+    ttsUseVertex: false,
 };
 
 // 可用的 TTS 语音列表
@@ -62,10 +70,13 @@ export function getSettings(): IApiSettings {
             apiKey: parsed.apiKey ?? DEFAULT_SETTINGS.apiKey,
             modelName: parsed.modelName ?? DEFAULT_SETTINGS.modelName,
             apiType: parsed.apiType ?? DEFAULT_SETTINGS.apiType,
+            gcpProject: parsed.gcpProject ?? DEFAULT_SETTINGS.gcpProject,
+            gcpLocation: parsed.gcpLocation ?? DEFAULT_SETTINGS.gcpLocation,
             ttsEndpoint: parsed.ttsEndpoint ?? DEFAULT_SETTINGS.ttsEndpoint,
             ttsApiKey: parsed.ttsApiKey ?? DEFAULT_SETTINGS.ttsApiKey,
             ttsModel: parsed.ttsModel ?? DEFAULT_SETTINGS.ttsModel,
             ttsVoice: parsed.ttsVoice ?? DEFAULT_SETTINGS.ttsVoice,
+            ttsUseVertex: parsed.ttsUseVertex ?? DEFAULT_SETTINGS.ttsUseVertex,
         };
     } catch (e) {
         console.error("Failed to parse settings:", e);
@@ -105,8 +116,27 @@ export function clearSettings(): void {
 
 /**
  * Check if API settings are configured
+ * For Gemini: only apiKey is required (uses default endpoint)
+ * For OpenAI: both endpoint and apiKey are required
+ * For Vertex AI: gcpProject and apiKey are required
  */
 export function isConfigured(): boolean {
     const settings = getSettings();
-    return Boolean(settings.endpoint && settings.apiKey);
+
+    // 所有类型都需要 apiKey
+    if (!settings.apiKey) {
+        return false;
+    }
+
+    // OpenAI 需要 endpoint
+    if (settings.apiType === 'openai' && !settings.endpoint) {
+        return false;
+    }
+
+    // Vertex AI 需要 project 和 location
+    if (settings.apiType === 'vertexai' && (!settings.gcpProject || !settings.gcpLocation)) {
+        return false;
+    }
+
+    return true;
 }

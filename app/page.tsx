@@ -27,19 +27,19 @@ export default function Home() {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,var(--tw-gradient-stops))] from-neutral-800 via-black to-black opacity-80 z-0"></div>
 
       {/* Content */}
-      <div className="z-10 w-full max-w-lg space-y-8 flex flex-col items-center">
-        <div className="text-center space-y-2">
-          <h1 className="text-5xl font-black text-white tracking-[0.2em] glitch-text">
+      <div className="z-10 w-full max-w-xl space-y-4 md:space-y-8 flex flex-col items-center">
+        <div className="text-center space-y-1 md:space-y-2">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-[0.15em] md:tracking-[0.2em] glitch-text">
             NOWHERE
           </h1>
-          <p className="text-neutral-500 font-mono text-sm tracking-widest">
+          <p className="text-neutral-500 font-mono text-[10px] sm:text-xs md:text-sm tracking-widest opacity-80">
             THE FREQUENCY OF THE LOST
           </p>
         </div>
 
         <RadioPlayer />
 
-        <div className="text-neutral-600 text-[10px] font-mono max-w-xs text-center">
+        <div className="text-neutral-600 text-[9px] md:text-[10px] font-mono max-w-xs text-center opacity-60">
           CAUTION: PROLONGED LISTENING MAY CAUSE TEMPORAL DISPLACEMENT SYMPTOMS.
         </div>
       </div>

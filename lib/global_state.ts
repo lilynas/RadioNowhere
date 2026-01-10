@@ -4,7 +4,6 @@
  * 超过限制时使用 AI 压缩总结
  */
 
-import { getSettings } from './settings_store';
 import { MoodType } from './types/radio_types';
 
 // ================== Types ==================
@@ -216,7 +215,8 @@ class GlobalState {
      * 调用 AI 压缩上下文
      */
     private async callAICompress(content: string): Promise<string | null> {
-        const settings = getSettings();
+        // 动态导入避免循环依赖
+        const { callGenerativeAI } = await import('./ai_service');
 
         const prompt = `请用一两句话总结以下电台节目历史，保留重要的音乐和话题信息：
 
@@ -224,34 +224,11 @@ ${content}
 
 总结（简洁）：`;
 
-        try {
-            const response = await fetch('/api/proxy', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    url: `${settings.endpoint.replace(/\/$/, '')}/v1/models/${settings.modelName}:generateContent`,
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${settings.apiKey}`
-                    },
-                    body: {
-                        contents: [{ parts: [{ text: prompt }] }],
-                        generationConfig: {
-                            temperature: 0.3,
-                            maxOutputTokens: 100
-                        }
-                    }
-                })
-            });
-
-            if (!response.ok) return null;
-
-            const data = await response.json();
-            return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
-        } catch {
-            return null;
-        }
+        return callGenerativeAI({
+            prompt,
+            temperature: 0.3,
+            maxOutputTokens: 100
+        });
     }
 
     /**

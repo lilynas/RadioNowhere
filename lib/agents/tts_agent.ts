@@ -4,6 +4,7 @@
  */
 
 import { getSettings } from '../settings_store';
+import { buildVertexUrl, apiFetch } from '../ai_service';
 import {
     TTSRequest,
     TTSResult,
@@ -11,6 +12,7 @@ import {
     SpeakerId,
     MoodType
 } from '../types/radio_types';
+import { radioMonitor } from '../radio_monitor';
 
 // ================== Constants ==================
 
@@ -63,11 +65,51 @@ Pace: 适中，像电台主持人一样`;
 
 // ================== TTS Agent Class ==================
 
+import { Cast, CastMember } from '../cast_system';
+
 export class TTSAgent {
     private queue: TTSRequest[] = [];
-    private isProcessing = false;
     private cache: Map<string, ArrayBuffer> = new Map();
     private lastCallTime = 0; // 限流控制
+    private activeCast: Cast | null = null; // 当前演员阵容
+
+    /**
+     * 设置当前演员阵容
+     */
+    setActiveCast(cast: Cast): void {
+        this.activeCast = cast;
+    }
+
+    /**
+     * 根据 speaker ID 获取音色
+     */
+    private getVoiceForSpeaker(speaker: SpeakerId | string): { voiceName: string; description: string } {
+        // 1. 先从当前演员阵容查找
+        if (this.activeCast) {
+            const member = this.activeCast.members.find(m => m.roleId === speaker);
+            if (member) {
+                return {
+                    voiceName: member.voiceName,
+                    description: `${member.roleName}: ${member.personality}`
+                };
+            }
+        }
+
+        // 2. 回退到预设配置
+        const profile = VOICE_PROFILES[speaker as SpeakerId];
+        if (profile) {
+            return {
+                voiceName: profile.voiceName,
+                description: profile.description
+            };
+        }
+
+        // 3. 默认音色
+        return {
+            voiceName: 'Aoede',
+            description: '默认音色'
+        };
+    }
 
     /**
      * 添加 TTS 请求到队列
@@ -77,6 +119,7 @@ export class TTSAgent {
         const cacheKey = this.getCacheKey(request);
         const cached = this.cache.get(cacheKey);
         if (cached) {
+            radioMonitor.log('TTS', `Cache Hit: ${request.text.slice(0, 20)}...`, 'trace');
             return {
                 id: request.id,
                 success: true,
@@ -84,11 +127,10 @@ export class TTSAgent {
             };
         }
 
-        // 添加到队列
-        this.queue.push(request);
-        this.queue.sort((a, b) => b.priority - a.priority);
+        // 记录队列状态
+        radioMonitor.updateStatus('TTS', 'BUSY', `Processing: ${request.text.slice(0, 15)}...`);
 
-        // 处理队列
+        // 直接处理请求（队列仅用于状态跟踪）
         return this.processRequest(request);
     }
 
@@ -97,20 +139,42 @@ export class TTSAgent {
      */
     async generateSpeech(
         text: string,
-        speaker: SpeakerId,
+        speaker: SpeakerId | string,
         options?: {
             mood?: MoodType;
             customStyle?: string;
             priority?: number;
         }
     ): Promise<TTSResult> {
-        const profile = VOICE_PROFILES[speaker];
-        const stylePrompt = buildStylePrompt(speaker, options?.mood, options?.customStyle);
+        const voiceInfo = this.getVoiceForSpeaker(speaker);
+
+        // 构建风格提示
+        let stylePrompt = `# AUDIO PROFILE: ${speaker}\n## ${voiceInfo.description}\n`;
+
+        if (options?.mood) {
+            const moodDescriptions: Record<MoodType, string> = {
+                cheerful: '开朗愉快，带着微笑的语气',
+                calm: '平静舒缓，让人感到放松',
+                excited: '兴奋激动，充满热情',
+                serious: '严肃认真，专业可信',
+                warm: '温暖亲切，像老朋友一样',
+                playful: '俏皮活泼，带点调侃',
+                melancholy: '略带忧郁，深情款款',
+                mysterious: '神秘莫测，引人入胜'
+            };
+            stylePrompt += `\nMood: ${moodDescriptions[options.mood]}`;
+        }
+
+        if (options?.customStyle) {
+            stylePrompt += `\nSpecial Instructions: ${options.customStyle}`;
+        }
+
+        stylePrompt += `\nLanguage: 中文普通话，自然流畅\nPace: 适中，像电台主持人一样`;
 
         const request: TTSRequest = {
             id: `tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             text,
-            voiceName: profile.voiceName,
+            voiceName: voiceInfo.voiceName,
             stylePrompt,
             priority: options?.priority || 5
         };
@@ -130,17 +194,20 @@ export class TTSAgent {
             const timeSinceLastCall = now - this.lastCallTime;
             if (timeSinceLastCall < RATE_LIMIT_DELAY_MS) {
                 const waitTime = RATE_LIMIT_DELAY_MS - timeSinceLastCall;
+                radioMonitor.log('TTS', `Rate limiting: waiting ${Math.round(waitTime / 1000)}s`, 'trace');
                 console.log(`[TTS] Rate limiting, waiting ${waitTime}ms...`);
                 await this.delay(waitTime);
             }
 
             this.lastCallTime = Date.now();
+            radioMonitor.updateStatus('TTS', 'BUSY', `Generating: ${request.text.slice(0, 15)}...`);
             const audioData = await this.callTTSApi(request);
 
             // 缓存结果
             const cacheKey = this.getCacheKey(request);
             this.cache.set(cacheKey, audioData);
 
+            radioMonitor.updateStatus('TTS', 'READY', `Generated: ${request.text.slice(0, 10)}`);
             return {
                 id: request.id,
                 success: true,
@@ -163,6 +230,7 @@ export class TTSAgent {
 
             if (retryCount < MAX_RETRIES) {
                 // 普通重试
+                radioMonitor.updateStatus('TTS', 'BUSY', `Retrying (attempt ${retryCount + 1})...`);
                 await this.delay(RETRY_DELAY_MS * (retryCount + 1));
                 request.retryCount = retryCount + 1;
                 return this.processRequest(request);
@@ -197,26 +265,54 @@ export class TTSAgent {
 #### TRANSCRIPT
 ${request.text}`;
 
-        // 构建 API URL
-        const apiUrl = `${normalizedEndpoint}/v1beta/models/${ttsModel}:generateContent?key=${ttsApiKey}`;
-
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: fullPrompt }] }],
-                generationConfig: {
-                    responseModalities: ['AUDIO'],
-                    speechConfig: {
-                        voiceConfig: {
-                            prebuiltVoiceConfig: {
-                                voiceName: request.voiceName
-                            }
+        const body = {
+            contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
+            generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: {
+                            voiceName: request.voiceName
                         }
                     }
                 }
-            })
-        });
+            }
+        };
+
+        let response: Response;
+
+        if (settings.apiType === 'vertexai' && settings.ttsUseVertex) {
+            // 使用 Vertex AI 配置
+            const isGcpApiKey = settings.apiKey.startsWith('AIza');
+            const apiUrl = buildVertexUrl(
+                settings.gcpProject,
+                settings.gcpLocation,
+                ttsModel,
+                'generateContent'
+            ) + (isGcpApiKey ? `?key=${settings.apiKey}` : '');
+
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json'
+            };
+
+            if (!isGcpApiKey) {
+                headers['Authorization'] = `Bearer ${settings.apiKey}`;
+            }
+
+            response = await apiFetch(apiUrl, {
+                method: 'POST',
+                headers,
+                body
+            });
+        } else {
+            // 使用 Gemini Native (AI Studio) 配置
+            const apiUrl = `${normalizedEndpoint}/v1beta/models/${ttsModel}:generateContent?key=${ttsApiKey}`;
+            response = await apiFetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body
+            });
+        }
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -241,16 +337,7 @@ ${request.text}`;
         return bytes.buffer;
     }
 
-    /**
-     * 规范化 endpoint
-     */
-    private normalizeEndpoint(endpoint: string): string {
-        let url = endpoint.replace(/\/$/, '');
-        if (!url.endsWith('/v1') && !url.endsWith('/v1beta')) {
-            url = `${url}/v1beta`;
-        }
-        return url;
-    }
+
 
     /**
      * 获取缓存键

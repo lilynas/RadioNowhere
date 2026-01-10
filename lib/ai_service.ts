@@ -40,20 +40,34 @@ function normalizeEndpoint(endpoint: string, apiType: ApiType): string {
         if (!url.endsWith('/v1')) {
             url = `${url}/v1`;
         }
-    } else {
+    } else if (apiType === 'gemini') {
         // Gemini: ensure ends with /v1 or /v1beta
         if (!url.endsWith('/v1') && !url.endsWith('/v1beta')) {
-            url = `${url}/v1`;
+            url = `${url}/v1beta`;
         }
+    }
+    // vertexai 不需要处理，URL 由 buildVertexUrl 生成
+    if (apiType === 'vertexai') {
+        return '';
     }
 
     return url;
 }
 
 /**
+ * 构建 Vertex AI URL
+ */
+export function buildVertexUrl(project: string, location: string, model: string, task: string): string {
+    // 允许用户输入完整模型名或简写
+    const modelFull = model.includes('/') ? model : `models/${model}`;
+    const taskMethod = task.startsWith(':') ? task : `:${task}`;
+    return `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/${modelFull}${taskMethod}`;
+}
+
+/**
  * 发送 API 请求（直接调用，如失败则尝试代理）
  */
-async function apiFetch(
+export async function apiFetch(
     url: string,
     options: { method: string; headers: Record<string, string>; body?: unknown }
 ): Promise<Response> {
@@ -92,6 +106,92 @@ async function apiFetch(
     }
 }
 
+// ================== Unified AI Call Helper ==================
+
+export interface GenerativeAIOptions {
+    prompt: string;
+    temperature?: number;
+    maxOutputTokens?: number;
+}
+
+/**
+ * 统一的 AI 调用辅助函数
+ * 自动处理 OpenAI / Gemini / Vertex AI 三种格式
+ */
+export async function callGenerativeAI(options: GenerativeAIOptions): Promise<string | null> {
+    const settings = getSettings();
+    const { prompt, temperature = 0.7, maxOutputTokens = 2048 } = options;
+
+    let url: string;
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    let body: unknown;
+
+    if (settings.apiType === 'vertexai') {
+        // Vertex AI 格式
+        const isGcpApiKey = settings.apiKey.startsWith('AIza');
+        url = buildVertexUrl(
+            settings.gcpProject,
+            settings.gcpLocation,
+            settings.modelName,
+            'generateContent'
+        );
+
+        if (isGcpApiKey) {
+            url += `?key=${settings.apiKey}`;
+        } else {
+            headers['Authorization'] = `Bearer ${settings.apiKey}`;
+        }
+
+        body = {
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { temperature, maxOutputTokens }
+        };
+    } else if (settings.apiType === 'gemini') {
+        // Gemini 格式
+        const endpoint = settings.endpoint || 'https://generativelanguage.googleapis.com';
+        const baseUrl = normalizeEndpoint(endpoint, 'gemini');
+        url = `${baseUrl}/models/${settings.modelName}:generateContent`;
+        headers['x-goog-api-key'] = settings.apiKey;
+        body = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature, maxOutputTokens }
+        };
+    } else {
+        // OpenAI 格式
+        const endpoint = settings.endpoint || '';
+        const baseUrl = normalizeEndpoint(endpoint, 'openai');
+        url = `${baseUrl}/chat/completions`;
+        headers['Authorization'] = `Bearer ${settings.apiKey}`;
+        body = {
+            model: settings.modelName,
+            messages: [{ role: 'user', content: prompt }],
+            temperature,
+            max_tokens: maxOutputTokens
+        };
+    }
+
+    try {
+        const response = await apiFetch(url, { method: 'POST', headers, body });
+
+        if (!response.ok) {
+            console.error(`AI API Error: ${response.status}`);
+            return null;
+        }
+
+        const data = await response.json();
+
+        // 根据 API 类型解析响应
+        if (settings.apiType === 'openai') {
+            return data.choices?.[0]?.message?.content || null;
+        } else {
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+        }
+    } catch (error) {
+        console.error('callGenerativeAI error:', error);
+        return null;
+    }
+}
+
 
 // ================== Main Functions ==================
 
@@ -107,7 +207,10 @@ export async function generateSegment(historyLines: string[]): Promise<IShowSegm
     }
 
     const settings = getSettings();
-    const baseUrl = normalizeEndpoint(settings.endpoint, settings.apiType);
+    // 使用默认 Gemini endpoint 如果未设置
+    const endpoint = settings.endpoint ||
+        (settings.apiType === 'gemini' ? 'https://generativelanguage.googleapis.com' : '');
+    const baseUrl = normalizeEndpoint(endpoint, settings.apiType);
 
     const history = historyLines.join("\n");
     const prompt = `
@@ -142,7 +245,45 @@ IMPORTANT:
     try {
         let responseText: string;
 
-        if (settings.apiType === 'gemini') {
+        if (settings.apiType === 'vertexai') {
+            // Vertex AI format
+            const isGcpApiKey = settings.apiKey.startsWith('AIza');
+            const url = buildVertexUrl(
+                settings.gcpProject,
+                settings.gcpLocation,
+                settings.modelName,
+                'generateContent'
+            ) + (isGcpApiKey ? `?key=${settings.apiKey}` : '');
+
+            const headers: Record<string, string> = {
+                "Content-Type": "application/json",
+            };
+
+            if (!isGcpApiKey) {
+                headers["Authorization"] = `Bearer ${settings.apiKey}`;
+            }
+
+            const response = await apiFetch(url, {
+                method: "POST",
+                headers,
+                body: {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.8,
+                        maxOutputTokens: 300,
+                    }
+                }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("Vertex AI API Error:", response.status, errorText);
+                return { type: "host_talk", content: "Signal interference detected..." };
+            }
+
+            const data: GeminiResponse = await response.json();
+            responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        } else if (settings.apiType === 'gemini') {
             // Gemini native format
             const response = await apiFetch(
                 `${baseUrl}/models/${settings.modelName}:generateContent`,
@@ -150,7 +291,7 @@ IMPORTANT:
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "Authorization": `Bearer ${settings.apiKey}`,
+                        "x-goog-api-key": settings.apiKey,
                     },
                     body: {
                         contents: [{ parts: [{ text: prompt }] }],
@@ -214,10 +355,46 @@ export async function testConnection(): Promise<{ success: boolean; message: str
     }
 
     const settings = getSettings();
-    const baseUrl = normalizeEndpoint(settings.endpoint, settings.apiType);
+    // 使用默认 Gemini endpoint 如果未设置
+    const endpoint = settings.endpoint ||
+        (settings.apiType === 'gemini' ? 'https://generativelanguage.googleapis.com' : '');
+    const baseUrl = normalizeEndpoint(endpoint, settings.apiType);
 
     try {
-        if (settings.apiType === 'gemini') {
+        if (settings.apiType === 'vertexai') {
+            // Vertex AI test
+            const isGcpApiKey = settings.apiKey.startsWith('AIza');
+            const url = buildVertexUrl(
+                settings.gcpProject,
+                settings.gcpLocation,
+                settings.modelName,
+                'generateContent'
+            ) + (isGcpApiKey ? `?key=${settings.apiKey}` : '');
+
+            const headers: Record<string, string> = {
+                "Content-Type": "application/json",
+            };
+
+            if (!isGcpApiKey) {
+                headers["Authorization"] = `Bearer ${settings.apiKey}`;
+            }
+
+            const response = await apiFetch(url, {
+                method: "POST",
+                headers,
+                body: {
+                    contents: [{ role: "user", parts: [{ text: "Hi" }] }],
+                    generationConfig: { maxOutputTokens: 5 }
+                }
+            });
+
+            if (response.ok) {
+                return { success: true, message: "✅ Vertex AI connection successful!" };
+            } else {
+                const errorText = await response.text();
+                return { success: false, message: `Error: ${response.status} - ${errorText.slice(0, 100)}` };
+            }
+        } else if (settings.apiType === 'gemini') {
             // Gemini test
             const response = await apiFetch(
                 `${baseUrl}/models/${settings.modelName}:generateContent`,
@@ -225,7 +402,7 @@ export async function testConnection(): Promise<{ success: boolean; message: str
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "Authorization": `Bearer ${settings.apiKey}`,
+                        "x-goog-api-key": settings.apiKey,
                     },
                     body: {
                         contents: [{ parts: [{ text: "Hi" }] }],
@@ -278,11 +455,14 @@ export async function fetchModels(endpoint: string, apiKey: string, apiType: Api
     const baseUrl = normalizeEndpoint(endpoint, apiType);
 
     try {
+        // 根据 API 类型使用不同的认证头
+        const headers: Record<string, string> = apiType === 'gemini'
+            ? { "x-goog-api-key": apiKey }
+            : { "Authorization": `Bearer ${apiKey}` };
+
         const response = await apiFetch(`${baseUrl}/models`, {
             method: "GET",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-            },
+            headers,
         });
 
         if (!response.ok) {
