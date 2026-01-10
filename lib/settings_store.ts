@@ -22,6 +22,9 @@ export interface IApiSettings {
     ttsModel: string;      // TTS Model name
     ttsVoice: string;      // 默认语音
     ttsUseVertex: boolean; // 是否在 TTS 时使用 Vertex AI 配置
+
+    // 播放配置
+    preloadBlockCount: number;  // 提前准备的 block 数量 (推荐: 3)
 }
 
 const DEFAULT_SETTINGS: IApiSettings = {
@@ -36,6 +39,7 @@ const DEFAULT_SETTINGS: IApiSettings = {
     ttsModel: "gemini-2.5-flash-preview-tts",
     ttsVoice: "Aoede",
     ttsUseVertex: false,
+    preloadBlockCount: 3,  // 推荐值: 3
 };
 
 // 可用的 TTS 语音列表
@@ -77,6 +81,7 @@ export function getSettings(): IApiSettings {
             ttsModel: parsed.ttsModel ?? DEFAULT_SETTINGS.ttsModel,
             ttsVoice: parsed.ttsVoice ?? DEFAULT_SETTINGS.ttsVoice,
             ttsUseVertex: parsed.ttsUseVertex ?? DEFAULT_SETTINGS.ttsUseVertex,
+            preloadBlockCount: parsed.preloadBlockCount ?? DEFAULT_SETTINGS.preloadBlockCount,
         };
     } catch (e) {
         console.error("Failed to parse settings:", e);

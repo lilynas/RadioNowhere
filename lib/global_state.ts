@@ -19,12 +19,20 @@ interface TopicEntry {
     timestamp: number;
 }
 
+interface SongWithLyrics {
+    name: string;
+    artist: string;
+    lyrics?: string;  // 纯文本歌词
+    playedAt: number;
+}
+
 interface ContextSummary {
     recentTracks: string[];       // 最近播放的歌曲
     recentTopics: string[];       // 最近讨论的话题
     overallMood: MoodType;        // 整体氛围
     compressedHistory?: string;   // AI 压缩的历史总结
     lastUpdated: number;
+    recentSongsWithLyrics?: SongWithLyrics[];  // 带歌词的歌曲信息
 }
 
 // ================== Constants ==================
@@ -41,6 +49,7 @@ class GlobalState {
     private topicHistory: TopicEntry[] = [];
     private compressedSummary: string | null = null;
     private currentMood: MoodType = 'calm';
+    private songsWithLyrics: SongWithLyrics[] = [];  // 带歌词的歌曲缓存
 
     // ================== 记录 ==================
 
@@ -86,6 +95,28 @@ class GlobalState {
      */
     setMood(mood: MoodType): void {
         this.currentMood = mood;
+    }
+
+    /**
+     * 添加带歌词的歌曲信息 (供 Writer Agent 生成更好的介绍)
+     */
+    addRecentlyPlayedSong(song: { name: string; artist: string; lyrics?: string }): void {
+        this.songsWithLyrics.push({
+            ...song,
+            playedAt: Date.now()
+        });
+
+        // 限制缓存大小
+        if (this.songsWithLyrics.length > 10) {
+            this.songsWithLyrics = this.songsWithLyrics.slice(-10);
+        }
+    }
+
+    /**
+     * 获取最近带歌词的歌曲 (供 Prompt 使用)
+     */
+    getRecentSongsWithLyrics(limit: number = 3): { name: string; artist: string; lyrics?: string }[] {
+        return this.songsWithLyrics.slice(-limit);
     }
 
     // ================== 查询 ==================
@@ -154,6 +185,21 @@ class GlobalState {
             context += `### 最近讨论的话题（请换新话题）\n`;
             context += summary.recentTopics.map(t => `- ${t}`).join('\n');
             context += '\n\n';
+        }
+
+        // 添加歌词信息供 AI 参考
+        const songsWithLyrics = this.getRecentSongsWithLyrics(2);
+        if (songsWithLyrics.length > 0) {
+            context += `### 最近歌曲歌词参考（可用于写介绍词）\n`;
+            for (const song of songsWithLyrics) {
+                context += `**${song.name}** - ${song.artist}\n`;
+                if (song.lyrics) {
+                    // 只取前几行歌词
+                    const lyricsPreview = song.lyrics.split('\n').slice(0, 6).join('\n');
+                    context += `\`\`\`\n${lyricsPreview}\n\`\`\`\n`;
+                }
+            }
+            context += '\n';
         }
 
         context += `### 当前氛围\n${summary.overallMood}\n`;

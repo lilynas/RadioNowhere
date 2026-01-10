@@ -15,9 +15,11 @@ import {
 import { writerAgent } from './writer_agent';
 import { ttsAgent } from './tts_agent';
 import { audioMixer } from '../audio_mixer';
-import { searchMusic, getMusicUrl, IGDMusicTrack } from '../gdmusic_service';
+import { searchMusic, getMusicUrl, getLyrics, IGDMusicTrack } from '../gdmusic_service';
 import { globalState } from '../global_state';
 import { radioMonitor } from '../radio_monitor';
+import { getSettings } from '../settings_store';
+import { saveSession } from '../session_store';
 
 // ================== Types ==================
 
@@ -92,66 +94,152 @@ export class DirectorAgent {
         console.log('[Director] Entering show loop...');
         radioMonitor.updateStatus('DIRECTOR', 'READY', 'Ready to start loop');
 
+        // 首次启动时播放预热内容
+        let isFirstRun = true;
+
         while (this.isRunning) {
             try {
-                // 1. 生成节目时间线
-                const duration = 300; // 5分钟
-                console.log(`[Director] Generating new timeline (${duration}s)...`);
-                radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Generating timeline...');
+                // 并行执行：预热播放 + 生成主节目
+                if (isFirstRun) {
+                    isFirstRun = false;
 
-                const timeline = await writerAgent.generateTimeline(
-                    duration,
-                    theme,
-                    userRequest
-                );
+                    // 同时启动预热播放和主节目生成
+                    const warmupPromise = this.playWarmupContent();
+                    const timelinePromise = this.generateMainTimeline(theme, userRequest);
 
-                console.log('[Director] New timeline generated:', timeline.id, 'with', timeline.blocks.length, 'blocks');
-                radioMonitor.emitTimeline(timeline);
+                    // 等待主节目生成完成
+                    const timeline = await timelinePromise;
 
-                // 同步演员阵容到 TTS Agent
-                const cast = writerAgent.getCurrentCast();
-                if (cast) {
-                    ttsAgent.setActiveCast(cast);
-                }
+                    // 停止预热，切换到主节目
+                    audioMixer.stopAll();
+                    await this.delay(300);
 
-                // 更新上下文
-                if (this.context) {
-                    this.context.timeline = timeline;
-                    this.context.currentBlockIndex = 0;
-                    this.context.onTimelineReady?.(timeline);
+                    // 设置时间线
+                    await this.setupTimeline(timeline);
                 } else {
-                    this.context = {
-                        timeline,
-                        currentBlockIndex: 0,
-                        isPaused: false,
-                    };
+                    // 后续循环：直接生成下一段节目
+                    const timeline = await this.generateMainTimeline(undefined, undefined);
+                    await this.setupTimeline(timeline);
                 }
 
-                // 2. 预处理
+                // 预处理
                 radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Preparing audio...');
-                await this.prepareBlocks(0, 3);
+                const preloadCount = getSettings().preloadBlockCount;
+                await this.prepareBlocks(0, preloadCount);
 
-                // 3. 执行当前时间线
+                // 执行当前时间线
                 radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Executing show...');
-                radioMonitor.log('DIRECTOR', `Beginning execution of timeline: ${timeline.id}`, 'info', { blockCount: timeline.blocks.length });
+                radioMonitor.log('DIRECTOR', `Beginning execution of timeline: ${this.context?.timeline.id}`, 'info', { blockCount: this.context?.timeline.blocks.length });
                 await this.executeTimeline();
 
                 // 播完一段后的清理
                 this.preparedAudio.clear();
 
-                // 如果有听众来信，第一轮播完后清除，避免循环播放同一封信
+                // 如果有听众来信，第一轮播完后清除
                 userRequest = undefined;
 
             } catch (error) {
                 console.error('[Director] Loop error:', error);
                 radioMonitor.updateStatus('DIRECTOR', 'ERROR', String(error));
                 this.context?.onError?.(error as Error);
-                await this.delay(5000); // 出错后等待 5 秒重试
+                await this.delay(5000);
             }
         }
 
         radioMonitor.updateStatus('DIRECTOR', 'IDLE', 'Show ended');
         console.log('[Director] Show loop ended.');
+    }
+
+    /**
+     * 播放预热内容（问候语 + 背景音乐循环）
+     */
+    private async playWarmupContent(): Promise<void> {
+        console.log('[Director] Starting warmup content...');
+        radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Playing warmup...');
+
+        try {
+            // 1. 先开始播放背景音乐
+            const musicPromise = this.searchAndPlayIntroMusic();
+
+            // 2. 同时生成简短的开场问候语
+            const greeting = this.getQuickGreeting();
+            const ttsResult = await ttsAgent.generateSpeech(
+                greeting,
+                'host1',
+                { mood: 'warm', priority: 10 }
+            );
+
+            // 3. 播放问候语（叠加在音乐上）
+            if (ttsResult.success && ttsResult.audioData) {
+                await audioMixer.fadeMusic(0.15, 500);
+                await audioMixer.playVoice(ttsResult.audioData);
+                await audioMixer.fadeMusic(0.7, 1000);
+            }
+
+            radioMonitor.log('DIRECTOR', 'Warmup content playing', 'info');
+        } catch (error) {
+            console.warn('[Director] Warmup playback error:', error);
+        }
+    }
+
+    /**
+     * 获取快速问候语（不调用 AI，直接生成）
+     */
+    private getQuickGreeting(): string {
+        const hour = new Date().getHours();
+        const greetings: Record<string, string> = {
+            morning: '早安！欢迎收听电台，新的一天，让我们用音乐和好心情开始。节目正在准备中，先来一首歌吧。',
+            noon: '午安！欢迎收听午间电台。工作之余，放松一下。节目马上开始，先听一首轻松的。',
+            afternoon: '下午好！欢迎收听下午茶电台。一杯咖啡，一首歌，享受惬意午后。节目正在准备中。',
+            evening: '傍晚好！欢迎收听晚间电台。结束了一天的忙碌，让音乐温暖你归家的路。',
+            night: '夜深了，欢迎收听深夜电台。让我们一起度过这段温暖的时光。节目马上开始。',
+            latenight: '凌晨了还没睡吗？让电台陪伴你。先来一首轻柔的音乐，节目马上开始。'
+        };
+
+        if (hour >= 6 && hour < 9) return greetings.morning;
+        if (hour >= 9 && hour < 12) return greetings.noon;
+        if (hour >= 12 && hour < 18) return greetings.afternoon;
+        if (hour >= 18 && hour < 21) return greetings.evening;
+        if (hour >= 21 || hour < 2) return greetings.night;
+        return greetings.latenight;
+    }
+
+    /**
+     * 生成主节目时间线
+     */
+    private async generateMainTimeline(theme?: string, userRequest?: string): Promise<ShowTimeline> {
+        const duration = 300; // 5分钟
+        console.log(`[Director] Generating new timeline (${duration}s)...`);
+        radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Generating timeline...');
+
+        return writerAgent.generateTimeline(duration, theme, userRequest);
+    }
+
+    /**
+     * 设置时间线到上下文
+     */
+    private async setupTimeline(timeline: ShowTimeline): Promise<void> {
+        console.log('[Director] New timeline generated:', timeline.id, 'with', timeline.blocks.length, 'blocks');
+        radioMonitor.emitTimeline(timeline);
+
+        // 同步演员阵容到 TTS Agent
+        const cast = writerAgent.getCurrentCast();
+        if (cast) {
+            ttsAgent.setActiveCast(cast);
+        }
+
+        // 更新上下文
+        if (this.context) {
+            this.context.timeline = timeline;
+            this.context.currentBlockIndex = 0;
+            this.context.onTimelineReady?.(timeline);
+        } else {
+            this.context = {
+                timeline,
+                currentBlockIndex: 0,
+                isPaused: false,
+            };
+        }
     }
 
     /**
@@ -333,7 +421,7 @@ export class DirectorAgent {
     }
 
     /**
-     * 预处理音乐块
+     * 预处理音乐块 (获取音乐和歌词)
      */
     private async prepareMusicBlock(block: MusicBlock): Promise<void> {
         if (this.musicCache.has(block.search)) return;
@@ -341,11 +429,36 @@ export class DirectorAgent {
         try {
             const tracks = await searchMusic(block.search);
             if (tracks.length > 0) {
-                this.musicCache.set(block.search, tracks[0]);
+                const track = tracks[0];
+                this.musicCache.set(block.search, track);
+
+                // 获取歌词并存入全局上下文 (供 Writer Agent 使用)
+                const lyrics = await getLyrics(track.lyricId, track.source);
+                if (lyrics?.lyric) {
+                    // 提取纯文本歌词 (去掉时间标记)
+                    const cleanLyrics = this.parseLrcToText(lyrics.lyric);
+                    globalState.addRecentlyPlayedSong({
+                        name: track.name,
+                        artist: track.artist.join(', '),
+                        lyrics: cleanLyrics.slice(0, 500)  // 限制长度
+                    });
+                    console.log('[Director] Fetched lyrics for:', track.name);
+                }
             }
         } catch (error) {
             console.error('Music search failed:', error);
         }
+    }
+
+    /**
+     * 解析 LRC 格式歌词为纯文本
+     */
+    private parseLrcToText(lrc: string): string {
+        return lrc
+            .split('\n')
+            .map(line => line.replace(/\[\d{2}:\d{2}(\.\d+)?\]/g, '').trim())
+            .filter(line => line.length > 0)
+            .join('\n');
     }
 
     /**
@@ -365,7 +478,8 @@ export class DirectorAgent {
                     this.targetBlockIndex = -1;
                     console.log('[Director] Jumped to block:', this.context.currentBlockIndex);
                     // 预处理新位置的块
-                    await this.prepareBlocks(this.context.currentBlockIndex, 2);
+                    const preloadCount = getSettings().preloadBlockCount;
+                    await this.prepareBlocks(this.context.currentBlockIndex, preloadCount);
                 }
             }
 
@@ -400,10 +514,19 @@ export class DirectorAgent {
             if (!this.skipRequested) {
                 this.context.currentBlockIndex++;
 
+                // 自动保存会话进度
+                saveSession({
+                    id: timeline.id,
+                    timeline: timeline,
+                    currentBlockIndex: this.context.currentBlockIndex,
+                    playbackPosition: 0
+                });
+
                 // 预处理后续块
                 const remainingBlocks = timeline.blocks.length - this.context.currentBlockIndex;
                 if (remainingBlocks > 0) {
-                    this.prepareBlocks(this.context.currentBlockIndex, 3);
+                    const preloadCount = getSettings().preloadBlockCount;
+                    this.prepareBlocks(this.context.currentBlockIndex, preloadCount);
                 }
             }
         }

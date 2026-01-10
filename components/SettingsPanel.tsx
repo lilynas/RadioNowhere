@@ -5,6 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Save, Zap, CheckCircle, AlertCircle, Loader2, RefreshCw, ChevronDown } from "lucide-react";
 import { getSettings, saveSettings, IApiSettings, ApiType } from "@/lib/settings_store";
 import { testConnection, fetchModels } from "@/lib/ai_service";
+import { TTS_VOICES, TTSVoice } from "@/lib/tts_voices";
+
+// Helper to get voices by language
+const getVoicesByLanguage = (lang: 'zh' | 'en' | 'ja' | 'multi'): TTSVoice[] => {
+    return TTS_VOICES.filter(v => v.language === lang);
+};
 
 interface SettingsPanelProps {
     isOpen: boolean;
@@ -24,6 +30,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         ttsModel: "gemini-2.5-flash-preview-tts",
         ttsVoice: "Aoede",
         ttsUseVertex: false,
+        preloadBlockCount: 3,
     });
     const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
     const [testMessage, setTestMessage] = useState("");
@@ -88,7 +95,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         }
     };
 
-    const handleChange = (field: keyof IApiSettings, value: string | boolean) => {
+    const handleChange = (field: keyof IApiSettings, value: string | boolean | number) => {
         setSaved(false);
 
         // 自动填充默认 URL
@@ -274,7 +281,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                         <p className="font-bold flex items-center gap-1 mb-1">
                                             <AlertCircle size={12} /> Vertex AI 验证方式
                                         </p>
-                                        <p>Vertex 节点需使用 OAuth <strong>Access Token</strong> (1小时有效)。</p>
+                                        <p>Vertex 节点需使用 OAuth <strong>Access Token</strong>。</p>
                                         <p className="mt-1"><strong>获取方式：</strong>在 GCP 控制台右上角打开 <strong>Cloud Shell</strong> 并输入 <code>gcloud auth print-access-token</code>。</p>
                                         <p className="mt-2 opacity-80 italic border-t border-amber-500/20 pt-1">提示: 如果追求永久有效，请改用【Gemini】频道并填入 API Key (AIza...)。</p>
                                     </div>
@@ -457,7 +464,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                 </select>
                             </div>
 
-                            {/* TTS Voice - All 30 voices */}
+                            {/* TTS Voice - Dynamic from config */}
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-neutral-400">Default Voice (全部 30 种音色)</label>
                                 <select
@@ -466,42 +473,24 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                     className="w-full px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-xl text-white focus:outline-none focus:border-purple-500 transition-colors"
                                 >
                                     <optgroup label="🇨🇳 中文推荐">
-                                        <option value="Aoede">Aoede - 女声·清澈温柔 (Breezy)</option>
-                                        <option value="Kore">​Kore - 女声·坚定专业 (Firm)</option>
-                                        <option value="Gacrux">Gacrux - 男声·成熟稳重 (Mature)</option>
-                                        <option value="Charon">Charon - 男声·专业播报 (Informative)</option>
-                                        <option value="Puck">Puck - 中性·活泼开朗 (Upbeat)</option>
+                                        {getVoicesByLanguage('zh').map(v => (
+                                            <option key={v.name} value={v.name}>{v.name} {v.gender === 'female' ? '♀' : v.gender === 'male' ? '♂' : '⚥'} - {v.description}</option>
+                                        ))}
                                     </optgroup>
                                     <optgroup label="🇬🇧 英文推荐">
-                                        <option value="Zephyr">Zephyr - Female·Bright</option>
-                                        <option value="Fenrir">Fenrir - Male·Excitable</option>
-                                        <option value="Leda">Leda - Female·Youthful</option>
-                                        <option value="Orus">Orus - Male·Firm</option>
-                                        <option value="Callirrhoe">Callirrhoe - Female·Confident</option>
+                                        {getVoicesByLanguage('en').map(v => (
+                                            <option key={v.name} value={v.name}>{v.name} {v.gender === 'female' ? '♀' : v.gender === 'male' ? '♂' : '⚥'} - {v.description}</option>
+                                        ))}
                                     </optgroup>
                                     <optgroup label="🇯🇵 日文推荐">
-                                        <option value="Despina">Despina - 女性·温もり (Warm)</option>
-                                        <option value="Autonoe">Autonoe - 女性·深み (Bright Mature)</option>
-                                        <option value="Umbriel">Umbriel - 男性·おっとり (Easy-going)</option>
-                                        <option value="Iapetus">Iapetus - 男性·親しみ (Friendly)</option>
+                                        {getVoicesByLanguage('ja').map(v => (
+                                            <option key={v.name} value={v.name}>{v.name} {v.gender === 'female' ? '♀' : v.gender === 'male' ? '♂' : '⚥'} - {v.description}</option>
+                                        ))}
                                     </optgroup>
                                     <optgroup label="🌍 其他音色">
-                                        <option value="Enceladus">Enceladus - Breathy</option>
-                                        <option value="Algieba">Algieba - Smooth</option>
-                                        <option value="Erinome">Erinome - Clear</option>
-                                        <option value="Algenib">Algenib - Warm Confident</option>
-                                        <option value="Rasalgethi">Rasalgethi - Conversational</option>
-                                        <option value="Laomedeia">Laomedeia - Upbeat</option>
-                                        <option value="Achernar">Achernar - Soft</option>
-                                        <option value="Alnilam">Alnilam - Energetic</option>
-                                        <option value="Schedar">Schedar - Even</option>
-                                        <option value="Pulcherrima">Pulcherrima - Bright Youthful</option>
-                                        <option value="Achird">Achird - Friendly</option>
-                                        <option value="Zubenelgenubi">Zubenelgenubi - Casual</option>
-                                        <option value="Vindemiatrix">Vindemiatrix - Gentle</option>
-                                        <option value="Sadachbia">Sadachbia - Deep Confident</option>
-                                        <option value="Sadaltager">Sadaltager - Knowledgeable</option>
-                                        <option value="Sulafar">Sulafar - Warm</option>
+                                        {getVoicesByLanguage('multi').map(v => (
+                                            <option key={v.name} value={v.name}>{v.name} {v.gender === 'female' ? '♀' : v.gender === 'male' ? '♂' : '⚥'} - {v.description}</option>
+                                        ))}
                                     </optgroup>
                                 </select>
                                 <p className="text-xs text-neutral-500">
@@ -531,6 +520,33 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                         {ttsTestMessage}
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Preload Settings */}
+                            <div className="space-y-3 pt-3 border-t border-neutral-800">
+                                <label className="text-sm font-medium text-neutral-400">预加载设置</label>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-neutral-500">提前准备节目数量</span>
+                                        <span className="text-sm font-mono text-emerald-400">{settings.preloadBlockCount}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={10}
+                                        value={settings.preloadBlockCount}
+                                        onChange={(e) => handleChange("preloadBlockCount", parseInt(e.target.value))}
+                                        className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                    />
+                                    <div className="flex justify-between text-[10px] text-neutral-600">
+                                        <span>1 (省内存)</span>
+                                        <span className="text-emerald-500">推荐: 3</span>
+                                        <span>10 (流畅)</span>
+                                    </div>
+                                    <p className="text-xs text-neutral-500">
+                                        数值越大播放越流畅，但消耗更多内存和 API 调用
+                                    </p>
+                                </div>
                             </div>
 
                             {/* Actions */}

@@ -416,18 +416,41 @@ ${castDescription}
         // 提取 JSON 内容
         let jsonStr = response;
 
-        // 移除 markdown 代码块
+        // 策略1: 移除 markdown 代码块
         const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
         if (jsonMatch) {
             jsonStr = jsonMatch[1];
+            console.log('[Writer] Extracted JSON from markdown code block');
+        } else {
+            // 策略2: 查找第一个 { 和最后一个 }
+            const firstBrace = response.indexOf('{');
+            const lastBrace = response.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                jsonStr = response.substring(firstBrace, lastBrace + 1);
+                console.log('[Writer] Extracted JSON by finding braces');
+            } else {
+                console.error('[Writer] No JSON structure found in response:', response.substring(0, 200));
+            }
         }
 
         // 尝试解析
-        const parsed = JSON.parse(jsonStr.trim());
+        let parsed;
+        try {
+            parsed = JSON.parse(jsonStr.trim());
+        } catch (parseError) {
+            console.error('[Writer] JSON parse failed. First 500 chars:', jsonStr.substring(0, 500));
+            throw parseError;
+        }
 
         // 验证结构
         if (!parsed.blocks || !Array.isArray(parsed.blocks)) {
+            console.error('[Writer] Invalid structure:', Object.keys(parsed));
             throw new Error('Invalid timeline structure: missing blocks array');
+        }
+
+        if (parsed.blocks.length === 0) {
+            console.error('[Writer] Empty blocks array');
+            throw new Error('Invalid timeline: blocks array is empty');
         }
 
         // 生成缺失的 ID
@@ -438,6 +461,7 @@ ${castDescription}
             }
         });
 
+        console.log('[Writer] Parse successful:', parsed.blocks.length, 'blocks');
         return parsed as ShowTimeline;
     }
 
