@@ -865,10 +865,42 @@ export class DirectorAgent {
     }
 
     /**
-     * 单说话人模式播放（逐句）
+     * 单说话人模式播放（逐句）- 带 lookahead 预生成
      */
     private async executeTalkBlockSingle(block: TalkBlock): Promise<void> {
-        for (const script of block.scripts) {
+        const scripts = block.scripts;
+
+        // 先启动所有未缓存句子的预生成（并行）
+        const lookaheadPromises: Map<number, Promise<void>> = new Map();
+
+        for (let i = 0; i < scripts.length; i++) {
+            const script = scripts[i];
+            const audioId = `${block.id}-${script.speaker}-${script.text.slice(0, 20)}`;
+
+            if (!this.preparedAudio.has(audioId)) {
+                // 启动预生成（不等待）
+                const promise = (async () => {
+                    try {
+                        const result = await ttsAgent.generateSpeech(
+                            script.text,
+                            script.speaker,
+                            { mood: script.mood, customStyle: script.voiceStyle, voiceName: script.voiceName }
+                        );
+                        if (result.success && result.audioData) {
+                            this.preparedAudio.set(audioId, result.audioData);
+                        }
+                    } catch (e) {
+                        console.warn('[Director] Lookahead TTS failed:', e);
+                    }
+                })();
+                lookaheadPromises.set(i, promise);
+            }
+        }
+
+        // 逐句播放
+        for (let i = 0; i < scripts.length; i++) {
+            const script = scripts[i];
+
             // 检测跳转请求，立即中断
             if (!this.isRunning || this.skipRequested) break;
 
@@ -876,6 +908,13 @@ export class DirectorAgent {
             radioMonitor.emitScript(script.speaker, script.text, block.id);
 
             const audioId = `${block.id}-${script.speaker}-${script.text.slice(0, 20)}`;
+
+            // 等待当前句子的预生成完成（如果还在进行中）
+            const pendingPromise = lookaheadPromises.get(i);
+            if (pendingPromise) {
+                await pendingPromise;
+            }
+
             const audioData = this.preparedAudio.get(audioId);
 
             if (audioData) {
@@ -885,7 +924,7 @@ export class DirectorAgent {
                     console.warn('[Director] Voice playback failed, skipping:', e);
                 }
             } else {
-                // 实时生成（备选）
+                // 实时生成（备选）- 如果预生成失败
                 try {
                     const result = await ttsAgent.generateSpeech(
                         script.text,

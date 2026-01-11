@@ -66,11 +66,11 @@ export const AGENT = {
     MAX_OUTPUT_TOKENS: 8192,          // AI 最大输出 token 数
 
     // Director Agent
-    PRELOAD_BLOCKS_DEFAULT: 3,        // 默认预加载块数
+    PRELOAD_BLOCKS_DEFAULT: 5,        // 默认预加载块数（增加到 5 块）
     HALFWAY_DELAY_MIN_MS: 5000,       // 预生成最小等待时间
 
     // TTS Agent
-    MAX_CONCURRENT_TTS: 3,            // TTS 最大并发数
+    MAX_CONCURRENT_TTS: 5,            // TTS 最大并发数
     API_RETRY_COUNT: 3,               // API 重试次数
     API_RETRY_BASE_DELAY: 1000,       // API 重试基础延迟 (ms)
 };

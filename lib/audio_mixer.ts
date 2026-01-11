@@ -121,12 +121,14 @@ export class AudioMixer {
 
             this.musicHowl = new Howl({
                 src: [url],
-                html5: true,
+                html5: false,  // 使用 Web Audio API，完全缓冲后播放（避免串流卡顿）
+                preload: true,
                 volume: startVolume,
                 onload: () => {
                     if (resolved) return;
                     resolved = true;
                     cleanup();
+                    console.log('[AudioMixer] Music fully loaded, starting playback');
                     if (options?.fadeIn) {
                         this.fadeMusic(this.musicVolume, options.fadeIn);
                     }

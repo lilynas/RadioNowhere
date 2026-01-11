@@ -34,7 +34,7 @@ export interface IApiSettings {
     msTtsAuthKey: string;      // 可选的 Bearer token
 
     // 播放配置
-    preloadBlockCount: number;  // 提前准备的 block 数量 (推荐: 3)
+    preloadBlockCount: number;  // 提前准备的 block 数量 (推荐: 5)
 }
 
 const DEFAULT_SETTINGS: IApiSettings = {

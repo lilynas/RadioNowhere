@@ -459,7 +459,33 @@ export class TTSAgent {
             };
         } catch (error: unknown) {
             const errorMsg = error instanceof Error ? error.message : String(error);
+
+            // 检查是否是中止信号导致的错误（静默处理）
+            if (errorMsg.includes('abort') || errorMsg.includes('Abort') || this.isAborted) {
+                console.log('[TTS] Request aborted (expected during disconnect)');
+                this.releaseSlot();
+                return {
+                    id: request.id,
+                    success: false,
+                    error: 'Aborted'
+                };
+            }
+
             console.error(`TTS Error (attempt ${retryCount + 1}):`, errorMsg);
+
+            // 检查是否是网络错误或临时性错误（可重试）
+            const isRetryableError = errorMsg.includes('Failed to fetch') ||
+                errorMsg.includes('network') ||
+                errorMsg.includes('ECONNREFUSED') ||
+                errorMsg.includes('socket') ||
+                errorMsg.includes('No audio data');
+            if (isRetryableError && retryCount < MAX_RETRIES) {
+                radioMonitor.updateStatus('TTS', 'BUSY', `Network error, retrying...`);
+                this.releaseSlot();
+                await this.delay(RETRY_DELAY_MS * (retryCount + 1));
+                request.retryCount = retryCount + 1;
+                return this.processRequest(request);
+            }
 
             // 检查是否是 429 限流错误
             if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
