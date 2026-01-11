@@ -1,12 +1,12 @@
-# RadioNowhere / 无线电 nowhere
+# RadioNowhere
 
 <div align="center">
 
-**AI-Powered Internet Radio Platform / AI 驱动的网络电台平台**
+**AI-Generated Internet Radio / AI 生成的网络电台**
 
 [Next.js 16](https://nextjs.org) + [React 19](https://reactjs.org) + [TypeScript](https://www.typescriptlang.org/) + [Tailwind CSS 4](https://tailwindcss.com)
 
-*An immersive AI-generated radio experience with multi-agent orchestration / 多智能体编排的沉浸式 AI 电台体验*
+*A multi-agent orchestrated AI radio experience with real-time content generation and intelligent audio mixing.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Next.js](https://img.shields.io/badge/Next.js-16.1-black?logo=next.js)](https://nextjs.org)
@@ -17,463 +17,696 @@
 
 ---
 
-## 🌟 项目简介 / Project Overview
+## 📻 Project Overview
 
-**RadioNowhere** 是一个革命性的 AI 驱动网络电台平台，融合了先进的人工智能技术与沉浸式的音频体验。平台通过多智能体系统自动生成动态内容，提供个性化的电台节目，结合实时音乐播放、文本转语音和智能调度系统。
+**RadioNowhere** is an AI-driven internet radio platform that generates dynamic radio shows in real-time using a multi-agent system. The platform features three core agents working in concert:
 
-**RadioNowhere** is a revolutionary AI-powered internet radio platform that combines advanced artificial intelligence with immersive audio experiences. The platform automatically generates dynamic content through a multi-agent system, providing personalized radio shows with real-time music playback, text-to-speech, and intelligent scheduling.
+- **Writer Agent** - Generates radio content using ReAct tool-calling pattern
+- **Director Agent** - Orchestrates show timelines with double-buffered preloading
+- **TTS Agent** - Converts text to speech with 30+ voice options
 
-### 🎭 世界观设定 / World Setting
+The radio station operates under the identity **"NOWHERE FM 404.2"** (无处电台), broadcasting diverse programs including talk shows, historical stories, science trivia, urban legends, interviews, late-night thoughts, music specials, and interactive entertainment.
 
-故事发生在 2099 年的虚构城市 "Neon Veridia"，这里融合了赛博朋克的高科技与后气候崩溃的废土元素。电台 "Radio Nowhere - The Frequency of the Lost" 为迷失的灵魂提供慰藉，节目风格忧郁而温暖，充满了末世浪漫主义色彩。
+### 🎭 World Setting
 
-Set in the fictional city of "Neon Veridia" in 2099, blending cyberpunk high-tech with post-climate collapse scavenging. The radio station "Radio Nowhere - The Frequency of the Lost" provides solace for lost souls, with a melancholic yet warm style full of post-apocalyptic romance.
-
----
-
-## ✨ 核心特性 / Core Features
-
-### 🤖 多智能体系统 / Multi-Agent System
-
-| Agent | 功能 / Function | 特色 / Features |
-|-------|----------------|----------------|
-| **Writer Agent** | 节目内容创作 / Content Generation | 动态风格适配、主持人角色系统、上下文记忆 |
-| **Director Agent** | 节目调度执行 / Show Orchestration | 双缓冲预加载、时间线管理、会话恢复 |
-| **TTS Agent** | 语音合成 / Speech Synthesis | 30+ 语音选择、情感表达、缓存优化 |
-
-### 🎵 音乐与音频 / Music & Audio
-
-- **🎶 GD Studio 音乐搜索** - 智能音乐发现与推荐
-- **📝 实时歌词解析** - LRC 格式歌词同步显示
-- **🎛️ 音频混合器** - 语音与音乐的智能叠加
-- **📡 Howler.js 音频引擎** - 高性能音频播放
-
-### 🎨 用户界面 / User Interface
-
-- **📻 电台播放器** - 状态控制、音频可视化、字幕显示
-- **📅 节目日程表** - 时间线可视化、跳转控制
-- **💬 系统终端** - 实时日志、Agent 状态监控
-- **📮 听众邮箱** - 互动请求处理
-- **⚙️ 设置面板** - API 配置、模型选择、语音测试
-
-### 💾 数据持久化 / Data Persistence
-
-- **🏠 localStorage 支持** - 设置和会话状态保持
-- **⏯️ 会话恢复** - 中断点续播功能
-- **🔄 上下文记忆** - 跨会话内容连贯性
+The station exists in a fictional atmosphere blending cyberpunk aesthetics with post-apocalyptic warmth. **Radio Nowhere - The Frequency of the Lost** provides solace for wandering souls through melancholic yet comforting programming, creating a unique "post-apocalyptic romanticism" experience.
 
 ---
 
-## 🛠️ 技术栈 / Tech Stack
+## ✨ Core Features
 
-### 前端框架 / Frontend Framework
+### 🤖 Multi-Agent System
 
-```typescript
-Next.js 16.1     // React 全栈框架 / Full-stack React framework
-React 19.2       // 用户界面库 / UI library
-TypeScript 5.0    // 类型安全 / Type safety
-Tailwind CSS 4   // 原子化 CSS / Utility-first CSS
-```
+| Agent | Role | Key Features |
+|-------|------|--------------|
+| **Writer Agent** | Content Generation | ReAct tool-calling (MAX_REACT_LOOPS: 30), dynamic program types, multi-character support, world-bible context |
+| **Director Agent** | Show Orchestration | Timeline management, double-buffered preloading, session persistence, music URL caching (10min TTL) |
+| **TTS Agent** | Speech Synthesis | 30+ Gemini voices, Microsoft TTS backup, priority queue (MAX_CONCURRENT_TTS: 5), audio caching |
 
-### 动画与图标 / Animation & Icons
+### 🎭 Program Types
 
-```typescript
-Framer Motion     // 流畅动画 / Smooth animations
-Lucide React      // 现代图标库 / Modern icon library
-```
+The Writer Agent dynamically generates diverse content:
 
-### 音频处理 / Audio Processing
+- **💬 Talk Show / 脱口秀** - Lively conversations between hosts sharing life anecdotes and trending topics
+- **📚 Historical Stories / 历史风云** - Historical narratives, biographies, and tales of dynasties
+- **🔬 Science Trivia / 科普百科** - Interesting scientific knowledge, natural mysteries, and fun facts
+- **👻 Urban Legends / 奇闻异事** - Urban legends and unsolved mysteries (suspenseful but not too scary)
+- **🎤 Interviews / 访谈对话** - Simulated interviews with celebrities, experts, or fictional characters
+- **🌙 Late Night Thoughts / 深夜心声** - Emotional topics and life insights (perfect for quiet hours)
+- **🎵 Music Specials / 音乐专题** - Introductions to genres, artists, or stories behind music
+- **🎪 Interactive Entertainment / 娱乐互动** - Fun discussions, games, and light-hearted comedy
 
-```typescript
-Howler.js 2.2.4  // Web 音频引擎 / Web audio engine
-@types/howler    // TypeScript 类型 / TypeScript definitions
-```
+### 🎵 Audio System
 
-### AI 服务集成 / AI Service Integration
+- **🎶 GD Studio Music API** - Smart music discovery with netease/kuwo/joox sources
+- **📝 LRC Lyrics Parser** - Real-time synchronized lyrics display
+- **🎛️ Audio Mixer** - Multi-track mixing with independent volume controls and fade effects
+- **📡 Howler.js Engine** - High-performance web audio playback
+- **🎚️ Smart Mixing** - Automatic volume ducking (MUSIC_DURING_VOICE: 0.15)
 
-```typescript
-@google/generative-ai  // Gemini AI 服务 / Gemini AI service
-OpenAI GPT            // 语言模型 / Language models
-Google Vertex AI      // 云端 AI / Cloud AI services
-```
+### 🎨 User Interface
 
-### 状态管理 / State Management
+- **📻 RadioPlayer** - Main player with Agent console, subtitle display, playback controls, and visualizer
+- **📅 Program Schedule** - Timeline visualization with jump controls
+- **💬 System Terminal** - Real-time logs and agent status monitoring
+- **📮 Mailbox** - Listener request queue for interactive content
+- **⚙️ Settings Panel** - API configuration, model selection, voice testing, and preload tuning
 
-```typescript
-Zustand 5.0.9    // 轻量级状态管理 / Lightweight state management
+### 💾 Data Persistence
+
+- **🏠 localStorage Support** - Settings, session, preferences, and cache storage
+- **⏯️ Session Recovery** - Full playback restoration with context rebuilding
+- **🔄 Context Memory** - Cross-session content continuity with GlobalState management
+- **📜 History Tracking** - Show history (max 50) and track history (max 100)
+
+---
+
+## 🛠️ Tech Stack
+
+```yaml
+Framework:
+  - Next.js: 16.1.1        # App Router for full-stack React
+  - React: 19.2.3          # Latest React with concurrent features
+  - TypeScript: 5.0         # Type-safe development
+
+Styling & Animation:
+  - Tailwind CSS: 4        # Utility-first CSS with v4 improvements
+  - tailwind-merge: 3.4.0  # Merge Tailwind classes intelligently
+  - Framer Motion: 12.25.0 # Production-ready animation library
+  - Lucide React: 0.562.0  # Beautiful & consistent icon toolkit
+
+Audio & State:
+  - Howler.js: 2.2.4       # Web audio engine
+  - @types/howler: 2.2.12 # TypeScript definitions
+  - Zustand: 5.0.9         # Lightweight state management
+
+AI Services:
+  - @google/generative-ai: 0.24.1  # Gemini AI SDK
+
+Utilities:
+  - clsx: 2.1.1            # Conditional className utility
 ```
 
 ---
 
-## 📁 项目结构 / Project Structure
+## 📁 Project Structure
 
 ```
 radio-nowhere/
-├── 📁 app/                    # Next.js 应用目录 / App directory
-│   ├── 📁 api/               # API 路由 / API routes
-│   ├── 📄 layout.tsx         # 根布局 / Root layout
-│   ├── 📄 page.tsx           # 主页面 / Main page
-│   └── 📄 globals.css        # 全局样式 / Global styles
-├── 📁 components/            # React 组件 / React components
-├── 📁 lib/                   # 核心逻辑库 / Core libraries
-│   ├── 📁 agents/           # 智能体系统 / Agent system
-│   │   ├── 📄 director_agent.ts   # 导演智能体 / Director agent
-│   │   ├── 📄 tts_agent.ts        # TTS 智能体 / TTS agent
-│   │   └── 📄 writer_agent.ts     # 编剧智能体 / Writer agent
-│   ├── 📄 ai_service.ts           # AI 服务抽象 / AI service abstraction
-│   ├── 📄 audio_mixer.ts          # 音频混合器 / Audio mixer
-│   ├── 📄 cast_system.ts          # 角色系统 / Character system
-│   ├── 📄 fictional_world.ts      # 世界观设定 / World setting
-│   ├── 📄 gdmusic_service.ts      # 音乐服务 / Music service
-│   ├── 📄 global_state.ts         # 全局状态 / Global state
-│   ├── 📄 lrc_parser.ts           # 歌词解析 / Lyrics parser
-│   ├── 📄 radio_monitor.ts        # 电台监控 / Radio monitor
-│   ├── 📄 session_store.ts        # 会话存储 / Session store
-│   ├── 📄 settings_store.ts       # 设置存储 / Settings store
-│   └── 📄 tts_voices.ts          # TTS 语音配置 / TTS voices
-├── 📁 public/               # 静态资源 / Static assets
-└── 📁 types/                # TypeScript 类型定义 / Type definitions
+├── app/                          # Next.js App Router
+│   ├── api/
+│   │   └── proxy/                # API proxy route (relays to external AI/TTS/music services)
+│   ├── globals.css               # Global styles with Tailwind
+│   ├── icon.svg                  # App icon
+│   ├── layout.tsx                # Root layout
+│   └── page.tsx                  # Main page entry
+│
+├── components/                   # React Components
+│   ├── AgentMonitor.tsx          # Agent monitoring display (11KB)
+│   ├── ApiCallBubbles.tsx        # API call visualization bubbles
+│   ├── PwaRegistrar.tsx          # Progressive Web App registration
+│   ├── RadioPlayer.tsx           # Main radio player (511 lines)
+│   └── SettingsPanel.tsx         # Settings configuration panel (651 lines)
+│
+├── lib/                          # Core Business Logic
+│   ├── agents/                   # Multi-Agent System
+│   │   ├── director_agent.ts     # Director: timeline execution, music control, session recovery
+│   │   ├── tts_agent.ts          # TTS: Gemini/Microsoft TTS with caching and rate limiting
+│   │   ├── writer_agent.ts       # Writer: ReAct-based content generation with tools
+│   │   └── writer_tools.ts       # Writer's tools: search_music, get_lyrics, fetch_news, check_duplicate, submit_show
+│   │
+│   ├── types/
+│   │   └── radio_types.ts        # Complete type system: ShowTimeline, TimelineBlock, TalkBlock, MusicBlock, etc.
+│   │
+│   ├── audio_mixer.ts            # Multi-track audio mixer with Howler.js
+│   ├── cast_system.ts            # Character system for radio personalities
+│   ├── constants.ts              # Global configuration constants
+│   ├── fictional_world.ts        # World bible and setting definitions
+│   ├── gdmusic_service.ts        # GD Studio music API integration (netease/kuwo/joox)
+│   ├── global_state.ts           # Global state management for context memory
+│   ├── lrc_parser.ts             # LRC format lyrics parser
+│   ├── mail_queue.ts             # Listener request queue system
+│   ├── microsoft_tts_voices.ts   # Microsoft TTS voice definitions
+│   ├── radio_monitor.ts          # Radio monitoring: agent status, logs, API call tracking
+│   ├── session_store.ts          # localStorage-based session persistence
+│   ├── settings_store.ts         # localStorage-based settings storage
+│   ├── show_history.ts           # Show and track history management
+│   ├── time_announcement.ts      # Hourly time announcement service
+│   ├── tts_voices.ts             # Gemini TTS voice configuration (30+ voices)
+│   └── voice_provider.ts         # Voice provider abstraction
+│
+├── public/                       # Static assets
+├── .gitignore
+├── eslint.config.mjs
+├── next.config.ts
+├── package.json
+├── postcss.config.mjs
+└── tsconfig.json
 ```
 
 ---
 
-## 🚀 快速开始 / Quick Start
+## 🤖 Agent Architecture
 
-### 环境要求 / Prerequisites
+### Writer Agent (`lib/agents/writer_agent.ts`)
 
-- **Node.js** 18.0+ 
-- **npm** / **yarn** / **pnpm** / **bun**
+The Writer Agent generates radio content using the ReAct (Reasoning + Acting) pattern with a tool-calling capability.
 
-### 安装步骤 / Installation
+**Key Features:**
 
-1. **克隆项目 / Clone the repository**
+- **ReAct Loops**: Up to 30 reasoning-acting cycles per show generation
+- **Tool Calling**: Five built-in tools:
+  - `search_music` - Search for specific artists or songs via GD Studio API
+  - `get_lyrics` - Fetch LRC format lyrics for music integration
+  - `fetch_news` - Get today's trending news for content inspiration
+  - `check_duplicate` - Verify concept uniqueness within 1-hour history
+  - `submit_show` - Submit the final ShowTimeline JSON
+- **Dynamic Character System**: Five character types (host1/Aoede, host2/Gacrux, guest/Puck, news/Charon, announcer/Kore)
+- **Time-Aware Content**: Adapts program selection to current time of day
+- **Context Memory**: Maintains story world coherence through GlobalState
+
+**Constants:**
+- `MAX_REACT_LOOPS: 30` - Maximum tool-calling iterations
+- `MAX_PARSE_RETRIES: 3` - JSON parsing retry attempts
+- `MAX_OUTPUT_TOKENS: 8192` - AI generation token limit
+
+### Director Agent (`lib/agents/director_agent.ts`)
+
+The Director Agent orchestrates the entire radio show, managing timelines, audio playback, and session persistence.
+
+**Key Features:**
+
+- **Timeline Management**: Executes ShowTimeline with four block types:
+  - `TalkBlock` - Multi-character dialogue scripts
+  - `MusicBlock` - Music playback with optional intro narration
+  - `MusicControlBlock` - Music actions (pause, resume, fade, stop)
+  - `SilenceBlock` - Timed silence segments
+- **Double-Buffered Preloading**: Generates `nextTimeline` while playing current timeline for seamless transitions
+- **Music URL Caching**: 10-minute TTL cache for GD Studio music URLs
+- **Session Persistence**: Complete session state saving/resuming via SessionStore
+- **Time Announcements**: Automatic hourly time announcements via TimeAnnouncementService
+- **Error Recovery**: Automatic block retry logic with graceful degradation
+
+**Constants:**
+- `PRELOAD_BLOCKS_DEFAULT: 5` - Number of blocks to preload ahead
+- `MUSIC_URL_TTL_MS: 10 * 60 * 1000` - URL cache validity (10 minutes)
+- `HALFWAY_DELAY_MIN_MS: 5000` - Minimum delay before pre-generating next timeline
+
+### TTS Agent (`lib/agents/tts_agent.ts`)
+
+The TTS Agent handles all text-to-speech generation with support for Gemini and Microsoft TTS.
+
+**Key Features:**
+
+- **Gemini TTS Support**: 30+ voice options across Chinese, English, and Japanese
+- **Microsoft TTS Fallback**: Alternative TTS provider with extensive voice library
+- **Priority Queue**: Processes TTS requests by priority (1-10 scale)
+- **Audio Caching**: Caches generated audio to avoid redundant API calls
+- **Automatic Retries**: Up to 3 retry attempts for failed requests
+- **Style Prompts**: Google-recommended structure (Audio Profile, The Scene, Director's Notes)
+
+**Constants:**
+- `MAX_CONCURRENT_TTS: 5` - Maximum parallel TTS generations
+- `API_RETRY_COUNT: 3` - Number of retry attempts
+- `API_RETRY_BASE_DELAY: 1000` - Base delay between retries (ms)
+
+**Supported Voice Profiles:**
+
+| Speaker ID | Voice Name | Gender | Style | Description |
+|------------|------------|--------|-------|-------------|
+| host1 | Aoede | Female | Gentle | Female host, emotional topics & late-night companionship |
+| host2 | Gacrux | Male | Humorous | Male host, music recommendations & casual chat |
+| guest | Puck | Neutral | Upbeat | Guest or special character |
+| news | Charon | Male | Professional | News anchor |
+| announcer | Kore | Female | Serious | Time announcement announcer |
+
+---
+
+## 🎛️ Audio System
+
+### AudioMixer (`lib/audio_mixer.ts`)
+
+A multi-track audio controller using Howler.js for seamless music and voice mixing.
+
+**Features:**
+
+- **Dual Tracks**: Independent music and voice track management
+- **Volume Control**: Master, music, and voice volume with ducking
+- **Fade Effects**: Configurable fade-in/fade-out durations
+- **PCM to WAV Conversion**: Converts Gemini TTS PCM output (24kHz, 16-bit, mono) to playable WAV
+- **State Management**: Real-time tracking of playback state for each track
+
+**Key Constants:**
+
+```typescript
+MUSIC_DEFAULT_VOLUME: 0.9      // Default music volume
+VOICE_DEFAULT_VOLUME: 1.0      // Default voice volume
+MUSIC_DURING_VOICE: 0.15      // Duck music to 15% when speaking
+FADE_DURATION_QUICK: 500      // Quick fade (ms)
+FADE_DURATION_NORMAL: 1000    // Normal fade (ms)
+FADE_DURATION_SLOW: 2000      // Slow fade (ms)
+```
+
+### GD Studio Music Service (`lib/gdmusic_service.ts`)
+
+Integrates with GD Studio Music API for music discovery and playback.
+
+**Features:**
+
+- **Multiple Sources**: Netease, Kuwo, Joox (stable sources)
+- **Search API**: Find songs by artist or title
+- **URL Fetching**: Get direct streaming URLs with bitrate options (default 320kbps)
+- **Lyrics Parsing**: Fetch and parse LRC format lyrics
+- **Rate Limiting**: 50 requests per 5 minutes
+
+**API Base:** `https://music-api.gdstudio.xyz/api.php`
+
+---
+
+## 🔌 API Integration
+
+### Supported AI Services
+
+#### OpenAI
+```typescript
+// Models
+- GPT-4o
+- GPT-3.5-turbo
+
+// Configuration
+endpoint: string  // e.g., "https://api.openai.com/v1"
+apiKey: string
+modelName: string
+```
+
+#### Google Gemini
+```typescript
+// Models
+- gemini-2.5-flash-preview-tts  // TTS model
+
+// Configuration
+endpoint: string  // e.g., "https://generativelanguage.googleapis.com/v1beta"
+apiKey: string
+```
+
+#### Google Vertex AI
+```typescript
+// Configuration
+gcpProject: string
+gcpLocation: string  // e.g., "us-central1"
+```
+
+### Environment Configuration
+
+Configure API keys through the Settings Panel (stored in localStorage):
+
+```typescript
+{
+  // AI Service
+  apiType: "openai" | "gemini" | "vertexai",
+  endpoint: string,
+  apiKey: string,
+  modelName: string,
+
+  // Vertex AI (if using)
+  gcpProject: string,
+  gcpLocation: string,
+
+  // TTS Provider
+  ttsProvider: "gemini" | "microsoft",
+
+  // Gemini TTS
+  ttsEndpoint: string,
+  ttsApiKey: string,
+  ttsModel: string,
+  ttsVoice: string,
+
+  // Microsoft TTS (alternative)
+  msTtsEndpoint: string,
+  msTtsVoice: string,
+  msTtsVolume: number,  // 0-100
+  msTtsRate: number,    // Speed adjustment
+  msTtsPitch: number,   // Pitch adjustment
+  msTtsAuthKey: string,
+
+  // Playback
+  preloadBlockCount: number  // Default: 3
+}
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** 18.0 or higher
+- **npm**, **yarn**, **pnpm**, or **bun**
+
+### Installation
+
+1. **Clone the repository**
    ```bash
    git clone <repository-url>
    cd radio-nowhere
    ```
 
-2. **安装依赖 / Install dependencies**
+2. **Install dependencies**
    ```bash
    npm install
-   # 或 / or
+   # or
    yarn install
-   # 或 / or  
+   # or
    pnpm install
-   # 或 / or
+   # or
    bun install
    ```
 
-3. **启动开发服务器 / Start development server**
+3. **Start development server**
    ```bash
    npm run dev
-   # 或 / or
-   yarn dev
    ```
 
-4. **访问应用 / Open the app**
+4. **Open your browser**
    
-   打开浏览器访问 / Open your browser to:
-   **[http://localhost:3000](http://localhost:3000)**
+   Navigate to: **[http://localhost:3000](http://localhost:3000)**
 
-### 生产构建 / Production Build
+### Configuration
+
+1. **Open Settings Panel**
+   - Click the settings icon in the RadioPlayer
+
+2. **Configure AI Service**
+   - Choose API provider (OpenAI, Gemini, or Vertex AI)
+   - Enter your API key
+   - Select model
+   - Click "Test Connection" to verify
+
+3. **Configure TTS**
+   - Choose TTS provider (Gemini or Microsoft)
+   - Select preferred voice
+   - Test voice synthesis
+
+4. **Start Listening**
+   - Click "Connect" to start the radio
+   - Agents will begin generating content
+
+### Production Build
 
 ```bash
-# 构建 / Build
+# Build
 npm run build
 
-# 启动生产服务器 / Start production server
+# Start production server
 npm start
 ```
 
 ---
 
-## 🎯 功能详解 / Feature Details
+## 📋 Configuration Guide
 
-### 🤖 Writer Agent - 编剧智能体
+### Settings Panel Features
 
-**动态内容生成系统**，根据时间段和上下文自动生成电台节目内容。
+#### API Configuration
+- 🔑 **API Key Management** - Secure key storage in localStorage
+- 🌐 **Service Endpoints** - Custom API endpoint configuration
+- 🔍 **Connection Testing** - Real-time connection validation
+- 📊 **Model List** - Fetch and select available models
 
-**Dynamic content generation system** that automatically creates radio show content based on time periods and context.
+#### Voice Settings
+- 🎤 **Voice Selection** - 30+ TTS voices with preview
+- 😊 **Style Customization** - Voice style and mood adjustment
+- ⚡ **Speed Control** - Playback rate adjustment
+- 🔊 **Volume Balance** - Voice-to-music ratio tuning
 
-#### 核心功能 / Core Functions:
-- **🎭 角色系统** - 支持多种主持人角色切换
-- **⏰ 时段适配** - 根据时间自动调整节目风格
-- **🌍 上下文记忆** - 维护故事世界连贯性
-- **📝 台本生成** - 智能生成对话、新闻、广告内容
+#### Playback Settings
+- 🎚️ **Audio Quality** - Bitrate selection (320kbps recommended)
+- 📡 **Preload Configuration** - Number of blocks to preload ahead (default: 3)
+- ⏯️ **Auto-play** - Auto-start on page load
+- 🔄 **Loop Mode** - Continuous playback options
 
-### 🎬 Director Agent - 导演智能体
+### Data Persistence
 
-**节目调度与执行系统**，负责整体节目流程控制和时间管理。
+All data is stored in localStorage:
 
-**Show scheduling and execution system** responsible for overall program flow control and time management.
-
-#### 核心功能 / Core Functions:
-- **⏯️ 时间线执行** - 精确控制节目节奏
-- **🔄 双缓冲预加载** - 优化播放体验
-- **🎵 音乐控制** - 智能音乐选择与切换
-- **💾 会话恢复** - 支持中断点续播
-
-### 🎤 TTS Agent - 语音合成智能体
-
-**多语音文本转语音系统**，提供丰富的语音选择和情感表达。
-
-**Multi-voice text-to-speech system** providing rich voice options and emotional expression.
-
-#### 支持的语音 / Supported Voices:
-- **🌟 Gemini/Vertex 语音** - 30+ 预设语音
-- **😊 情感表达** - 快乐、忧郁、兴奋、平静等
-- **🚀 缓存优化** - 智能缓存减少重复请求
-- **⚡ 速率限制** - 自动处理 API 调用限制
-
-### 🎵 音乐系统 / Music System
-
-#### GD Studio 音乐服务 / GD Studio Music Service:
-- **🔍 智能搜索** - 基于关键词的 AI 音乐推荐
-- **📊 音乐信息** - 完整歌曲元数据获取
-- **🎤 歌词同步** - LRC 格式歌词实时显示
-- **📡 音频流** - 高质量音频流播放
-
-#### 音频混合器 / Audio Mixer:
-- **🔊 多轨混音** - 语音与音乐智能叠加
-- **🎚️ 音量控制** - 独立轨道音量调节
-- **🎧 立体声效果** - 空间音频处理
-- **⚡ 低延迟** - 实时音频处理
-
----
-
-## 🔌 API 集成 / API Integration
-
-### 支持的 AI 服务 / Supported AI Services
-
-#### 🤖 OpenAI
 ```typescript
-// GPT 模型支持 / GPT model support
-- GPT-4        // 最强语言理解 / Best language understanding
-- GPT-3.5-turbo // 平衡性能与速度 / Balanced performance & speed
-```
-
-#### 🌟 Google Gemini
-```typescript
-// Gemini 模型支持 / Gemini model support  
-- gemini-pro   // 通用对话模型 / General conversational model
-- gemini-pro-vision // 多模态理解 / Multimodal understanding
-```
-
-#### ☁️ Google Vertex AI
-```typescript
-// Vertex AI 服务 / Vertex AI services
-- Text-to-Speech API // 语音合成 / Speech synthesis
-- Speech-to-Text API // 语音识别 / Speech recognition
-- Translation API    // 翻译服务 / Translation service
-```
-
-### 环境变量配置 / Environment Configuration
-
-```bash
-# 必需配置 / Required Configuration
-OPENAI_API_KEY=your_openai_api_key
-GEMINI_API_KEY=your_gemini_api_key
-
-# 可选配置 / Optional Configuration  
-VERTEX_PROJECT_ID=your_vertex_project_id
-VERTEX_LOCATION=us-central1
-
-# 音乐服务 / Music Service
-GDMUSIC_API_KEY=your_gdmusic_api_key
-
-# 开发配置 / Development
-NODE_ENV=development
-```
-
----
-
-## ⚙️ 配置说明 / Configuration Guide
-
-### 🎛️ 设置面板功能 / Settings Panel Features
-
-#### API 配置 / API Configuration
-- **🔑 API Key 管理** - 安全的密钥存储
-- **🌐 服务端点配置** - 自定义 API 地址
-- **🔍 连接测试** - 实时验证连接状态
-- **⚡ 性能监控** - API 响应时间统计
-
-#### 语音设置 / Voice Settings
-- **🎤 语音选择** - 30+ TTS 语音预览
-- **😊 情感调节** - 语音情感强度控制
-- **⚡ 语速设置** - 播放速度调节
-- **🔊 音量平衡** - 语音与音乐比例
-
-#### 播放器设置 / Player Settings
-- **🎚️ 音频质量** - 音质与带宽平衡
-- **📡 预加载设置** - 缓冲区大小配置
-- **⏯️ 自动播放** - 启动时自动开始
-- **🔄 循环模式** - 节目循环播放选项
-
-### 💾 数据持久化 / Data Persistence
-
-#### localStorage 存储项 / Storage Items:
-```typescript
-interface StoredData {
-  settings: AppSettings      // 用户设置 / User settings
-  session: SessionData      // 会话数据 / Session data  
-  preferences: UserPrefs   // 用户偏好 / User preferences
-  cache: CacheData         // 缓存数据 / Cache data
+// Storage Keys
+{
+  'radio-nowhere-settings': IApiSettings,    // User configuration
+  'radio-nowhere-session': SessionData,     // Current session state
+  'radio-nowhere-preferences': UserPrefs,   // User preferences
+  'radio-nowhere-cache': CacheData          // Audio and music cache
 }
 ```
 
-#### 会话恢复流程 / Session Recovery Flow:
-1. **检测会话** / Detect Session → 检查本地存储 / Check local storage
-2. **加载状态** / Load State → 恢复播放位置 / Restore playback position  
-3. **重建上下文** / Rebuild Context → 恢复 Agent 状态 / Restore agent states
-4. **继续播放** / Resume Playback → 无缝继续体验 / Seamless continuation
+**Session Recovery Flow:**
+1. Detect saved session on page load
+2. Load playback position and context
+3. Rebuild agent states from saved timeline
+4. Resume playback seamlessly
 
 ---
 
-## 👨‍💻 开发指南 / Development Guide
+## 🎯 Component Details
 
-### 🏗️ 添加新功能 / Adding New Features
+### RadioPlayer (`components/RadioPlayer.tsx`)
 
-#### 1. 创建新的 Agent / Create New Agent
+The main player interface with 511 lines of code.
+
+**Subcomponents:**
+
+- **AgentConsole** - Real-time status monitoring for WRITER, TTS, DIRECTOR, and MIXER agents
+- **SubtitleDisplay** - Dynamic scrolling subtitle display (maintains last 3 lines)
+- **PlaybackControls** - Connect, pause, skip, mute, volume controls
+- **Visualizer** - Audio visual animation
+- **TimelineView** - Program schedule visualization with time-based navigation
+
+**Features:**
+- Session detection and recovery prompt
+- Real-time agent status updates via RadioMonitor
+- Interactive timeline with block-by-block navigation
+- Mail queue for listener submissions
+- Responsive design with cyberpunk dark theme
+
+### SettingsPanel (`components/SettingsPanel.tsx`)
+
+Comprehensive settings interface with 651 lines of code.
+
+**Sections:**
+
+1. **AI Service Configuration**
+   - API provider selection
+   - Endpoint and key input
+   - Model selection with dropdown
+   - Connection testing with status feedback
+
+2. **TTS Configuration**
+   - Provider selection (Gemini/Microsoft)
+   - Voice selection with preview
+   - Voice testing functionality
+   - Style and emotion settings
+
+3. **Playback Settings**
+   - Preload block count (1-10)
+   - Audio quality preferences
+   - Auto-play and loop toggles
+
+**Features:**
+- Auto-load saved settings
+- Real-time connection validation
+- Voice synthesis testing
+- Settings persistence with save confirmation
+
+### AgentMonitor (`components/AgentMonitor.tsx`)
+
+Dedicated agent monitoring interface (11KB).
+
+**Displays:**
+- Agent status (IDLE, BUSY, ERROR)
+- Thought processes and reasoning
+- Action logs and events
+- API call tracking
+- Performance metrics
+
+---
+
+## 📚 Type System (`lib/types/radio_types.ts`)
+
+Complete TypeScript definitions for the radio system.
+
+### Core Types
+
 ```typescript
-// lib/agents/new_agent.ts
-export class NewAgent {
-  async process(input: any): Promise<any> {
-    // 实现逻辑 / Implementation logic
+// Speaker IDs
+type SpeakerId = 'host1' | 'host2' | 'guest' | 'news' | 'announcer';
+
+// Mood/Emotion types
+type MoodType = 'cheerful' | 'calm' | 'excited' | 'serious' | 'warm' | 'playful' | 'melancholy' | 'mysterious';
+
+// Voice configuration
+interface VoiceProfile {
+  voiceName: string;
+  gender: 'male' | 'female' | 'neutral';
+  style: string;
+  description: string;
+}
+
+// Timeline structures
+interface ShowTimeline {
+  id: string;
+  title?: string;
+  estimatedDuration: number;
+  blocks: TimelineBlock[];
+  metadata?: {
+    theme?: string;
+    mood?: MoodType;
+    userRequest?: string;
+  };
+}
+
+// Block types
+type TimelineBlock = TalkBlock | MusicBlock | MusicControlBlock | SilenceBlock;
+
+// TTS request/response
+interface TTSRequest {
+  id: string;
+  text: string;
+  voiceName: string;
+  stylePrompt: string;
+  priority: number;
+  retryCount?: number;
+}
+
+// Player state
+interface PlayerState {
+  isPlaying: boolean;
+  currentBlockId: string | null;
+  musicState: { isPlaying: boolean; currentTrack: string | null; volume: number };
+  voiceState: { isPlaying: boolean; currentScriptId: string | null };
+  queue: { pending: number; ready: number; generating: number };
+}
+```
+
+---
+
+## 🔧 Development Guide
+
+### Adding New Program Types
+
+To add a new program type, extend the Writer Agent's prompt in `lib/agents/writer_agent.ts`:
+
+```typescript
+// Add new program type in getRadioSetting()
+const programTypes = [
+  // ... existing types
+  {
+    name: 'Podcast',
+    description: '深度访谈、专题讨论、故事讲述'
   }
-}
+];
 ```
 
-#### 2. 扩展 UI 组件 / Extend UI Components
-```typescript
-// components/NewComponent.tsx
-export function NewComponent() {
-  return (
-    <div className="new-component">
-      {/* 组件内容 / Component content */}
-    </div>
-  )
-}
-```
+### Adding New TTS Voices
 
-#### 3. 添加新的 AI 服务 / Add New AI Service
+Add voice definitions in `lib/tts_voices.ts` or `lib/microsoft_tts_voices.ts`:
+
 ```typescript
-// lib/ai_service.ts
-export class NewAIService {
-  async callAPI(prompt: string): Promise<string> {
-    // API 调用逻辑 / API call logic
+// For Gemini voices
+export const ALL_VOICES = {
+  // ... existing voices
+  NewVoice: {
+    gender: 'female',
+    lang: 'zh',
+    style: 'Warm',
+    desc: '温暖亲切的女声'
   }
-}
+} as const;
 ```
 
-### 🔧 开发工具 / Development Tools
+### Customizing Audio Mixing
 
-#### 代码检查 / Code Quality
-```bash
-# ESLint 检查 / ESLint check
-npm run lint
+Adjust audio constants in `lib/constants.ts`:
 
-# TypeScript 类型检查 / TypeScript type check  
-npm run type-check
-
-# 格式化代码 / Format code
-npm run format
+```typescript
+export const AUDIO = {
+  MUSIC_DURING_VOICE: 0.15,      // Duck music to 15% when speaking
+  FADE_DURATION_NORMAL: 1000,    // Normal fade duration (ms)
+  // ... other constants
+};
 ```
 
-#### 调试工具 / Debug Tools
-- **🔍 Chrome DevTools** - 浏览器开发工具
-- **📊 React DevTools** - React 组件调试
-- **🌐 Network Tab** - API 请求监控
-- **💾 Application Tab** - localStorage 调试
+### Debugging
 
-### 🎯 性能优化 / Performance Optimization
+**Chrome DevTools:**
+- Network Tab - Monitor API calls and timing
+- Application Tab - Inspect localStorage data
+- Console - View agent logs and errors
 
-#### 音频性能 / Audio Performance
-- **🎵 音频压缩** - 选择合适的音频格式
-- **📡 流式播放** - 减少初始加载时间  
-- **🔄 智能缓存** - 预加载热门内容
-- **⚡ 延迟优化** - 最小化音频延迟
-
-#### 内存管理 / Memory Management
-- **🗑️ 垃圾回收** - 及时清理音频资源
-- **📦 资源池** - 重用音频对象
-- **💾 缓存策略** - 平衡内存与性能
-- **🔍 内存监控** - 实时内存使用追踪
+**Radio Monitor:**
+- Open AgentMonitor component for real-time agent insights
+- View thought processes, actions, and API calls
+- Track agent states and performance
 
 ---
 
-## 🤝 贡献指南 / Contributing Guide
+## 🤝 Contributing
 
-我们欢迎所有形式的贡献！无论是 bug 报告、功能建议、代码贡献，还是文档改进。
+We welcome contributions! Please follow these guidelines:
 
-We welcome all forms of contribution! Whether it's bug reports, feature requests, code contributions, or documentation improvements.
+1. **Fork the repository**
+2. **Create a feature branch** - `git checkout -b feature/amazing-feature`
+3. **Make your changes** following existing code style
+4. **Commit with clear messages** - `git commit -m 'Add amazing feature'`
+5. **Push to your branch** - `git push origin feature/amazing-feature`
+6. **Open a Pull Request**
 
-### 📋 贡献流程 / Contribution Process
+### Bug Reports
 
-1. **🍴 Fork 项目** - 点击右上角 Fork 按钮
-2. **🌿 创建分支** - `git checkout -b feature/amazing-feature`
-3. **✏️ 提交更改** - `git commit -m 'Add amazing feature'`
-4. **📤 推送分支** - `git push origin feature/amazing-feature`
-5. **📝 创建 PR** - 提交 Pull Request
+Please include:
+- Bug description and steps to reproduce
+- Expected vs actual behavior
+- Screenshots or logs
+- Environment information (browser, Node.js version)
 
-### 🐛 报告 Bug / Bug Reports
+### Feature Requests
 
-请使用 [Issues](../../issues) 页面报告 bug，并包含以下信息：
-
-Please use the [Issues](../../issues) page to report bugs and include the following information:
-
-- **🐛 Bug 描述** / Bug description
-- **🔄 重现步骤** / Steps to reproduce  
-- **💭 预期行为** / Expected behavior
-- **📷 截图/日志** / Screenshots/logs
-- **🖥️ 环境信息** / Environment info
-
-### 💡 功能请求 / Feature Requests
-
-我们同样欢迎新功能建议！请详细描述：
-
-We also welcome new feature suggestions! Please describe in detail:
-
-- **🎯 功能目标** / Feature goal
-- **💭 使用场景** / Use case
-- **🔄 实现思路** / Implementation approach
-- **🎨 UI/UX 考虑** / UI/UX considerations
+Please describe:
+- Feature goal and use case
+- Implementation suggestions
+- UI/UX considerations
 
 ---
 
-## 📄 许可证 / License
-
-本项目基于 [MIT 许可证](./LICENSE) 开源。
+## 📄 License
 
 This project is open source under the [MIT License](./LICENSE).
 
 ---
 
-## 🙏 致谢 / Acknowledgments
+## 🙏 Acknowledgments
 
-感谢所有为本项目做出贡献的开发者和设计师！
+**Core Technologies:**
 
-Thanks to all developers and designers who have contributed to this project!
+- [Next.js](https://nextjs.org) - Full-stack React framework
+- [React](https://reactjs.org) - UI library
+- [TypeScript](https://www.typescriptlang.org) - Type safety
+- [Tailwind CSS](https://tailwindcss.com) - Utility-first CSS
+- [Framer Motion](https://framer.com/motion/) - Animation library
+- [Howler.js](https://howlerjs.com) - Web audio engine
+- [Lucide](https://lucide.dev) - Icon library
+- [Zustand](https://zustand-demo.pmnd.rs) - State management
 
-### 🌟 核心技术 / Core Technologies
+**Special Thanks:**
 
-- **[Next.js](https://nextjs.org)** - 强大的 React 框架
-- **[React](https://reactjs.org)** - 用户界面库
-- **[TypeScript](https://www.typescriptlang.org)** - 类型安全的 JavaScript
-- **[Tailwind CSS](https://tailwindcss.com)** - 实用优先的 CSS 框架
-- **[Framer Motion](https://framer.com/motion/)** - 流畅动画库
-- **[Howler.js](https://howlerjs.com)** - Web 音频引擎
-
-### 🤝 特别感谢 / Special Thanks
-
-- 所有贡献者和测试用户 / All contributors and test users
-- 开源社区的支持 / Open source community support
-- AI 技术的发展推动者 / AI technology development promoters
+- All contributors and users of RadioNowhere
+- The open source community
+- AI technology providers enabling this project
 
 ---
 
 <div align="center">
 
-**🎵 RadioNowhere - Where AI Meets Radio / 人工智能遇见电台 🎵**
+**🎵 RadioNowhere - Where AI Meets Radio 🎵**
 
 [⭐ Star this repo](https://github.com/your-repo/radio-nowhere) | [🐛 Report Bug](https://github.com/your-repo/radio-nowhere/issues) | [💡 Request Feature](https://github.com/your-repo/radio-nowhere/issues)
 
