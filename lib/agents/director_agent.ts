@@ -21,8 +21,9 @@ import { radioMonitor } from '../radio_monitor';
 import { getSettings } from '../settings_store';
 import { saveSession } from '../session_store';
 import { mailQueue } from '../mail_queue';
-import { AUDIO } from '../constants';
+import { AUDIO, SHOW, TRANSITION, AGENT, MUSIC_SERVICE } from '../constants';
 import { timeAnnouncementService } from '../time_announcement';
+import { recordShow } from '../show_history';
 
 // ================== Types ==================
 
@@ -52,6 +53,9 @@ export class DirectorAgent {
 
     // 跳转请求标志
     private skipRequested = false;
+
+    // Session ID 防止并行播放
+    private currentSessionId = 0;
     private targetBlockIndex = -1;
 
     /**
@@ -72,6 +76,8 @@ export class DirectorAgent {
         }
 
         this.isRunning = true;
+        this.currentSessionId++;  // 新 session，旧循环会检测到并退出
+        const sessionId = this.currentSessionId;
         ttsAgent.reset();  // 重置 TTS Agent 中止状态
 
         // 保存回调
@@ -91,15 +97,15 @@ export class DirectorAgent {
         // 启动报时服务
         timeAnnouncementService.start();
 
-        // 开始执行循环
-        await this.runShowLoop(options?.theme, options?.userRequest);
+        // 开始执行循环，传入 sessionId
+        await this.runShowLoop(options?.theme, options?.userRequest, sessionId);
     }
 
     /**
      * 内部主运行循环
      */
-    private async runShowLoop(theme?: string, userRequest?: string): Promise<void> {
-        console.log('[Director] Entering show loop...');
+    private async runShowLoop(theme?: string, userRequest?: string, sessionId?: number): Promise<void> {
+        console.log('[Director] Entering show loop... (session:', sessionId, ')');
         radioMonitor.updateStatus('DIRECTOR', 'READY', 'Ready to start loop');
 
         // 下一个时间线的预生成缓冲区
@@ -107,7 +113,10 @@ export class DirectorAgent {
         let nextTimelineReady = false;
         let isFirstRun = true;
 
-        while (this.isRunning) {
+        // 检查 session 是否仍然有效（防止并行播放）
+        const isValidSession = () => sessionId === undefined || sessionId === this.currentSessionId;
+
+        while (this.isRunning && isValidSession()) {
             try {
                 let currentTimeline: ShowTimeline;
 
@@ -130,10 +139,10 @@ export class DirectorAgent {
                     nextTimeline = null;
                     nextTimelineReady = false;
 
-                    // 平滑过渡
-                    await audioMixer.fadeMusic(0, 1000);
-                    audioMixer.stopMusic();
-                    await this.delay(300);
+                    // 节目间过渡音乐（30秒-60秒轻音乐过渡）
+                    radioMonitor.log('DIRECTOR', 'Playing transition music...', 'info');
+                    await this.playTransitionMusic();
+                    await this.delay(500);
                 } else {
                     // 备选：如果预生成没准备好，等待生成
                     radioMonitor.log('DIRECTOR', 'Waiting for timeline generation...', 'warn');
@@ -151,21 +160,21 @@ export class DirectorAgent {
                 await this.prepareBlocks(0, preloadCount);
 
                 // 🔥 关键：开始播放当前节目的同时，并行生成下一期节目
-                const executePromise = this.executeTimeline();
+                const executePromise = this.executeTimeline(sessionId);
 
                 // 在当前节目播放时，并行生成和准备下一期
                 const prepareNextPromise = (async () => {
                     // 等待当前节目播放到一半时开始准备下一期
-                    const halfwayDelay = Math.max(5000, (currentTimeline.blocks.length * 3000) / 2);
+                    const halfwayDelay = Math.max(AGENT.HALFWAY_DELAY_MIN_MS, (currentTimeline.blocks.length * 3000) / 2);
                     await this.delay(halfwayDelay);
 
-                    if (!this.isRunning) return;
+                    if (!this.isRunning || !isValidSession()) return;
 
                     radioMonitor.log('DIRECTOR', 'Pre-generating next timeline...', 'info');
                     const pendingMail = mailQueue.getNext();
                     nextTimeline = await this.generateMainTimeline(undefined, pendingMail?.content);
 
-                    if (!this.isRunning || !nextTimeline) return;
+                    if (!this.isRunning || !isValidSession() || !nextTimeline) return;
 
                     // 预处理下一期的前半部分音频
                     await this.setupTimeline(nextTimeline, false); // false = 不广播
@@ -243,6 +252,53 @@ export class DirectorAgent {
     }
 
     /**
+     * 播放节目间过渡音乐（30-60秒轻音乐）
+     */
+    private async playTransitionMusic(): Promise<void> {
+        console.log('[Director] Playing transition music...');
+        radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Playing transition...');
+
+        try {
+            const queries = TRANSITION.SEARCH_QUERIES;
+            const query = queries[Math.floor(Math.random() * queries.length)];
+
+            const tracks = await searchMusic(query, 5);
+            if (tracks.length === 0) {
+                // 如果搜索失败，简单延迟
+                await this.delay(5000);
+                return;
+            }
+
+            // 随机选择一首
+            const track = tracks[Math.floor(Math.random() * tracks.length)];
+            const sourceType = track.source === 'tencent' ? 'tencent' : 'netease';
+            const url = await getMusicUrl(String(track.id), 320, sourceType);
+
+            if (url) {
+                // 设置较低的音量用于过渡
+                audioMixer.setMusicVolume(TRANSITION.MUSIC_VOLUME);
+
+                // 播放 30-45 秒过渡音乐
+                const transitionDuration = TRANSITION.MIN_DURATION_MS + Math.random() * (TRANSITION.MAX_DURATION_MS - TRANSITION.MIN_DURATION_MS);
+                audioMixer.playMusic(url, { fadeIn: TRANSITION.FADE_IN_MS });
+
+                // 等待过渡时长
+                await this.delay(transitionDuration);
+
+                // 淡出
+                await audioMixer.fadeMusic(0, TRANSITION.FADE_OUT_MS);
+                audioMixer.stopMusic();
+
+                // 恢复音量
+                audioMixer.setMusicVolume(AUDIO.MUSIC_AFTER_TRANSITION);
+            }
+        } catch (error) {
+            console.warn('[Director] Transition music error:', error);
+            await this.delay(3000);
+        }
+    }
+
+    /**
      * 获取快速问候语（不调用 AI，直接生成）
      */
     private getQuickGreeting(): string {
@@ -268,7 +324,7 @@ export class DirectorAgent {
      * 生成主节目时间线
      */
     private async generateMainTimeline(theme?: string, userRequest?: string): Promise<ShowTimeline> {
-        const duration = 300; // 5分钟
+        const duration = SHOW.MAIN_DURATION;
         console.log(`[Director] Generating new timeline (${duration}s)...`);
         radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Generating timeline...');
 
@@ -612,12 +668,15 @@ export class DirectorAgent {
     /**
      * 执行时间线
      */
-    private async executeTimeline(): Promise<void> {
+    private async executeTimeline(sessionId?: number): Promise<void> {
         if (!this.context) return;
 
         const { timeline } = this.context;
 
-        while (this.isRunning && this.context.currentBlockIndex < timeline.blocks.length) {
+        // Session 有效性检查
+        const isValidSession = () => sessionId === undefined || sessionId === this.currentSessionId;
+
+        while (this.isRunning && isValidSession() && this.context.currentBlockIndex < timeline.blocks.length) {
             // 检查跳转请求
             if (this.skipRequested) {
                 this.skipRequested = false;
@@ -691,6 +750,13 @@ export class DirectorAgent {
                 }
             }
         }
+
+        // 节目完整播放完成，记录到历史
+        if (this.context && this.context.currentBlockIndex >= timeline.blocks.length) {
+            const showType = writerAgent.getCurrentCast()?.showType || 'talk';
+            recordShow(timeline.title || 'Untitled', showType, []);
+            radioMonitor.log('DIRECTOR', `Show completed: ${timeline.title}`, 'info');
+        }
     }
 
     /**
@@ -704,7 +770,7 @@ export class DirectorAgent {
 
         try {
             // 使用 globalState 的上下文
-            const timeline = await writerAgent.generateTimeline(120);
+            const timeline = await writerAgent.generateTimeline(SHOW.PREGENERATE_DURATION);
             this.nextTimeline = timeline;
 
             // 预处理前几块

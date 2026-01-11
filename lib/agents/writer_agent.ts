@@ -4,6 +4,7 @@
  */
 
 import { getSettings } from '../settings_store';
+import { RADIO, SHOW, AGENT } from '../constants';
 import {
     ShowTimeline,
     TimelineBlock,
@@ -21,8 +22,8 @@ import {
 
 // ================== Constants ==================
 
-const MAX_PARSE_RETRIES = 3;
-const MAX_REACT_LOOPS = 10;
+const MAX_PARSE_RETRIES = AGENT.MAX_PARSE_RETRIES;
+const MAX_REACT_LOOPS = AGENT.MAX_REACT_LOOPS;
 
 // ================== Radio Setting (Dynamic) ==================
 
@@ -30,53 +31,60 @@ function getRadioSetting(): string {
     const now = new Date();
     const hour = now.getHours();
 
-    // 根据时段提供风格建议（不写死主持人名字）
-    let stationSuggestion = '';
-    let styleSuggestion = '';
-    let hostStyleSuggestion = '';
-
-    if (hour >= 6 && hour < 9) {
-        stationSuggestion = '早间节目风格：元气、活力、开启美好一天';
-        styleSuggestion = '轻快活力、正能量、元气满满';
-        hostStyleSuggestion = '主持人风格建议：活力开朗的女主持 + 阳光幽默的男主持';
-    } else if (hour >= 9 && hour < 12) {
-        stationSuggestion = '工作时段风格：背景音乐台、提升效率';
-        styleSuggestion = '轻松不打扰、专注氛围、偶尔分享小知识';
-        hostStyleSuggestion = '主持人风格建议：知性温和 + 沉稳专业';
-    } else if (hour >= 12 && hour < 14) {
-        stationSuggestion = '午间风格：午休陪伴、放松身心';
-        styleSuggestion = '慵懒惬意、轻松聊天、午后小憩感';
-        hostStyleSuggestion = '主持人风格建议：慵懒甜美 + 随性幽默';
-    } else if (hour >= 14 && hour < 18) {
-        stationSuggestion = '下午茶风格：文艺清新、indie 音乐';
-        styleSuggestion = '文艺清新、下午茶氛围';
-        hostStyleSuggestion = '主持人风格建议：文艺范 + 音乐达人';
-    } else if (hour >= 18 && hour < 21) {
-        stationSuggestion = '傍晚归家风格：温情时刻、都市情感';
-        styleSuggestion = '温情脉脉、下班放松';
-        hostStyleSuggestion = '主持人风格建议：温柔体贴 + 成熟稳重';
-    } else if (hour >= 21 || hour < 2) {
-        stationSuggestion = '深夜电台风格：陪伴型、温暖治愈';
-        styleSuggestion = '轻松温馨、偶尔搞笑、深夜陪伴感';
-        hostStyleSuggestion = '主持人风格建议：温柔知性 + 幽默随和';
+    // 时段只做参考，不限制内容类型
+    let timeMood = '';
+    if (hour >= 6 && hour < 12) {
+        timeMood = '清晨到上午的时光';
+    } else if (hour >= 12 && hour < 18) {
+        timeMood = '午后悠闲时光';
+    } else if (hour >= 18 && hour < 22) {
+        timeMood = '傍晚归家时分';
     } else {
-        stationSuggestion = '凌晨助眠风格：失眠者的陪伴';
-        styleSuggestion = '轻声细语、助眠氛围、温柔陪伴';
-        hostStyleSuggestion = '主持人风格建议：轻柔舒缓 + 低沉磁性';
+        timeMood = '深夜静谧时刻';
     }
 
-    return `你是一个极具创意的网络电台节目制作人。
+    return `你是 **${RADIO.NAME} ${RADIO.FREQUENCY}** 网络电台的内容创作者。
 
-## 时段参考
-${stationSuggestion}
-${styleSuggestion}
-${hostStyleSuggestion}
+## 📻 电台身份
+- 电台名称：**${RADIO.NAME}** (${RADIO.SLOGAN})
+- 频率：**${RADIO.FREQUENCY}**
+- 可以在节目中自然地提及电台名称，如"欢迎收听 ${RADIO.NAME} ${RADIO.FREQUENCY}"、"这里是无处电台"等
 
-## 重要提示
-- 你可以完全自由地创建电台名称和主持人人设
-- 不要每次都用同样的设定，发挥创意！
-- 可以模拟全球任何风格的电台：BBC、NPR、日本深夜放送、复古调频、海盗电台等
-- 主持人的名字、性格、说话方式都由你决定
+## 🎭 节目类型（请随机选择，不要每次都一样！）
+
+### 💬 脱口秀/闲聊
+两位主持人轻松聊天，分享生活趣事、热门话题、个人见解
+
+### 📚 历史风云
+讲述历史故事、人物传记、朝代兴衰，带听众穿越时空
+
+### 🔬 科普百科
+有趣的科学知识、自然奥秘、生活冷知识，深入浅出
+
+### 👻 奇闻异事
+都市传说、未解之谜、灵异故事（营造悬疑氛围，但不要过于恐怖）
+
+### 🎤 访谈对话
+模拟采访名人、专家或虚构人物，深度对话
+
+### 🌙 深夜心声
+情感话题、人生感悟、温暖治愈（适合${timeMood}）
+
+### 🎵 音乐专题
+介绍某个曲风、歌手或音乐背后的故事
+
+### 🎪 娱乐互动
+有趣的话题讨论、游戏互动、轻松搞笑
+
+## 🚨 重要原则
+1. **内容优先**：选择有趣的话题比"符合时段"更重要
+2. **避免重复**：不要每次都是同一种风格或话题
+3. **深度展开**：挑一个具体话题深入讨论，不要泛泛而谈
+4. **真实感**：主持人要有真实的对话感，不要念稿子味
+5. **创意自由**：可以创造任何风格的电台、任何人设的主持人
+
+## 参考时段
+当前是${timeMood}，可以参考但不必被限制。一期讲三国历史的节目在早上播放也完全可以！
 `;
 }
 
@@ -165,27 +173,53 @@ export class WriterAgent {
                         try {
                             let timelineJson = toolCall.args.timeline_json;
 
-                            // 如果 timeline_json 是字符串，可能是被 JSON.stringify 过的
-                            // 尝试直接解析为对象
+                            // 如果 timeline_json 已经是对象，直接使用
+                            if (typeof timelineJson === 'object' && timelineJson !== null) {
+                                finalTimeline = timelineJson as ShowTimeline;
+                                break;
+                            }
+
+                            // 字符串处理
                             if (typeof timelineJson === 'string') {
-                                try {
-                                    // 尝试直接 JSON.parse（处理已 stringify 的情况）
-                                    const parsed = JSON.parse(timelineJson);
-                                    if (typeof parsed === 'object' && parsed.blocks) {
-                                        // 成功解析为对象
-                                        finalTimeline = parsed;
+                                let jsonStr = timelineJson;
+
+                                // 尝试多种解析策略
+                                for (let attempt = 0; attempt < 3; attempt++) {
+                                    try {
+                                        const parsed = JSON.parse(jsonStr);
+                                        if (typeof parsed === 'object' && parsed.blocks) {
+                                            finalTimeline = parsed;
+                                            radioMonitor.log('WRITER', `JSON parsed on attempt ${attempt + 1}`, 'info');
+                                            break;
+                                        } else if (typeof parsed === 'string') {
+                                            // 可能是双重 stringify，继续解析
+                                            jsonStr = parsed;
+                                        } else {
+                                            break;
+                                        }
+                                    } catch {
+                                        // 解析失败，尝试清理字符串
+                                        if (attempt === 0) {
+                                            // 第一次失败：尝试提取 JSON 对象
+                                            const firstBrace = jsonStr.indexOf('{');
+                                            const lastBrace = jsonStr.lastIndexOf('}');
+                                            if (firstBrace !== -1 && lastBrace > firstBrace) {
+                                                jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+                                            }
+                                        }
                                         break;
                                     }
-                                } catch {
-                                    // 如果直接解析失败，使用 parseResponse 处理
                                 }
-                                // 使用 parseResponse 处理字符串内容
-                                finalTimeline = this.parseResponse(timelineJson);
-                            } else if (typeof timelineJson === 'object') {
-                                // 如果已经是对象，直接使用
-                                finalTimeline = timelineJson as ShowTimeline;
+
+                                // 如果上述方法都失败，使用 parseResponse 处理
+                                if (!finalTimeline) {
+                                    finalTimeline = this.parseResponse(timelineJson);
+                                }
                             }
-                            break;
+
+                            if (finalTimeline) {
+                                break;
+                            }
                         } catch (e) {
                             radioMonitor.log('WRITER', `Parse after submit failed: ${e}`, 'warn');
                             // 继续循环修正
@@ -767,13 +801,76 @@ ${getVoiceListForPrompt()}
             throw new Error('No valid JSON structure found in AI response');
         }
 
+        // 策略3: 检测 tool call 格式并提前提取 timeline_json
+        // 匹配 {"tool": "submit_show", "args": {"timeline_json": "..."}}
+        if (jsonStr.includes('"tool"') && jsonStr.includes('"submit_show"') && jsonStr.includes('timeline_json')) {
+            console.log('[Writer] Detected tool call format, extracting timeline_json early');
+
+            // 提取 timeline_json 的值（转义字符串）
+            const timelineMatch = jsonStr.match(/"timeline_json"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/)
+            if (timelineMatch && timelineMatch[1]) {
+                // 解码转义的 JSON 字符串
+                try {
+                    const unescaped = timelineMatch[1]
+                        .replace(/\\"/g, '"')
+                        .replace(/\\n/g, '\n')
+                        .replace(/\\t/g, '\t')
+                        .replace(/\\\\/g, '\\');
+                    jsonStr = unescaped;
+                    console.log('[Writer] Successfully extracted and unescaped timeline_json');
+                } catch (e) {
+                    console.warn('[Writer] Failed to unescape timeline_json, trying alternative method');
+                }
+            }
+        }
+
         // 尝试解析
         let parsed;
         try {
             parsed = JSON.parse(jsonStr.trim());
         } catch (parseError) {
-            console.error('[Writer] JSON parse failed. First 500 chars:', jsonStr.substring(0, 500));
-            throw parseError;
+            // 尝试修复常见的 JSON 问题
+            try {
+                // 移除可能的尾随逗号
+                const fixedJson = jsonStr
+                    .replace(/,\s*}/g, '}')
+                    .replace(/,\s*\]/g, ']');
+                parsed = JSON.parse(fixedJson.trim());
+                console.log('[Writer] JSON parse succeeded after fixing trailing commas');
+            } catch {
+                console.error('[Writer] JSON parse failed. First 500 chars:', jsonStr.substring(0, 500));
+                throw parseError;
+            }
+        }
+
+        // 策略3: 处理 tool call 格式 {"tool": "submit_show", "args": {"timeline_json": "..."}}
+        if (parsed.tool === 'submit_show' && parsed.args?.timeline_json) {
+            console.log('[Writer] Detected tool call format, extracting timeline_json');
+            let timelineJson = parsed.args.timeline_json;
+
+            // 可能是字符串，需要再次解析
+            if (typeof timelineJson === 'string') {
+                try {
+                    parsed = JSON.parse(timelineJson);
+                    console.log('[Writer] Successfully parsed nested timeline_json');
+                } catch {
+                    // 尝试移除多余的转义
+                    try {
+                        const unescaped = timelineJson
+                            .replace(/\\"/g, '"')
+                            .replace(/\\n/g, '\n')
+                            .replace(/\\\\/g, '\\');
+                        parsed = JSON.parse(unescaped);
+                        console.log('[Writer] Successfully parsed unescaped timeline_json');
+                    } catch (e2) {
+                        console.error('[Writer] Failed to parse nested timeline_json:', e2);
+                        throw new Error('Failed to parse nested timeline_json');
+                    }
+                }
+            } else {
+                // 已经是对象
+                parsed = timelineJson;
+            }
         }
 
         // 验证结构

@@ -5,6 +5,7 @@
  */
 
 import { MoodType } from './types/radio_types';
+import { STATE } from './constants';
 
 // ================== Types ==================
 
@@ -38,9 +39,9 @@ interface ContextSummary {
 // ================== Constants ==================
 
 const CONTEXT_WINDOW_MS = 10 * 60 * 1000;  // 10 分钟
-const MAX_TRACK_HISTORY = 20;
-const MAX_TOPIC_HISTORY = 30;
-const COMPRESS_THRESHOLD = 25;  // 超过此数量时压缩
+const MAX_TRACK_HISTORY = STATE.MAX_TRACK_HISTORY;
+const MAX_TOPIC_HISTORY = STATE.MAX_TOPIC_HISTORY;
+const COMPRESS_THRESHOLD = STATE.COMPRESS_THRESHOLD;
 
 // ================== Global State Class ==================
 

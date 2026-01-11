@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bot, ChevronDown, ChevronUp, X, Wrench, Brain, MessageSquare, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { Bot, ChevronDown, ChevronUp, X, Wrench, Brain, MessageSquare, AlertCircle, CheckCircle, Loader2, Trash2 } from "lucide-react";
 import { radioMonitor, AgentStatus, LogEvent, AgentType, AgentThought } from "@/lib/radio_monitor";
+import { resetHistory } from "@/lib/show_history";
 
 interface AgentState {
     status: AgentStatus['status'];
@@ -45,6 +46,13 @@ export default function AgentMonitor() {
             unsubThought();
         };
     }, []);
+
+    const handleClearMemory = () => {
+        if (confirm('清除 AI 记忆？这将允许 AI 重复之前的节目类型和歌曲。')) {
+            resetHistory();
+            radioMonitor.log('MIXER', 'AI memory cleared by user', 'info');
+        }
+    };
 
     const getStatusIcon = (status: AgentStatus['status']) => {
         switch (status) {
@@ -106,6 +114,13 @@ export default function AgentMonitor() {
                     <span className="text-xs font-semibold text-neutral-300">Agent Monitor</span>
                 </div>
                 <div className="flex items-center gap-1">
+                    <button
+                        onClick={handleClearMemory}
+                        className="p-1 hover:bg-red-900/30 rounded transition-colors group"
+                        title="Clear AI Memory"
+                    >
+                        <Trash2 size={14} className="text-neutral-500 group-hover:text-red-400" />
+                    </button>
                     <button
                         onClick={() => setIsExpanded(!isExpanded)}
                         className="p-1 hover:bg-neutral-700 rounded transition-colors"

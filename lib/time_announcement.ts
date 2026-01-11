@@ -6,6 +6,7 @@
 import { ttsAgent } from './agents/tts_agent';
 import { audioMixer } from './audio_mixer';
 import { radioMonitor } from './radio_monitor';
+import { TIME_ANNOUNCEMENT } from './constants';
 
 // ================== Types ==================
 
@@ -20,9 +21,9 @@ interface TimeAnnouncementState {
 // ================== Constants ==================
 
 const JINGLE_PATH = '/整点报时5s.mp3';
-const TRIGGER_BEFORE_MS = 6000; // 提前6秒触发（54秒时触发）
-const RESUME_DELAY_MS = 3000; // 报时后3秒恢复
-const CHECK_INTERVAL_MS = 1000; // 每秒检查一次
+const TRIGGER_BEFORE_MS = TIME_ANNOUNCEMENT.TRIGGER_BEFORE_MS;
+const RESUME_DELAY_MS = TIME_ANNOUNCEMENT.RESUME_DELAY_MS;
+const CHECK_INTERVAL_MS = TIME_ANNOUNCEMENT.CHECK_INTERVAL_MS;
 
 // ================== Service ==================
 

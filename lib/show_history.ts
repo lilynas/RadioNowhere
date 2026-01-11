@@ -1,7 +1,9 @@
 /**
- * Show History - 节目历史记录
+ * Show History - 节目历史记录 (localStorage 持久化版本)
  * 追踪近期节目和歌曲，避免重复
  */
+
+import { HISTORY } from './constants';
 
 // ================== Types ==================
 
@@ -14,23 +16,73 @@ export interface ShowRecord {
 
 export interface ShowHistory {
     recentShows: ShowRecord[];
-    recentSongs: string[];
+    recentSongs: Array<{ title: string; timestamp: number }>;  // 歌曲也带时间戳
     lastBreakTime: number;
 }
 
 // ================== Constants ==================
 
-const HISTORY_DURATION_MS = 60 * 60 * 1000; // 1 小时
-const MAX_RECENT_SHOWS = 30;
-const MAX_RECENT_SONGS = 50;
+const STORAGE_KEY = 'nowhere_fm_history';
+const HISTORY_DURATION_MS = HISTORY.EXPIRY_HOURS * 60 * 60 * 1000;
+const MAX_RECENT_SHOWS = HISTORY.MAX_RECENT_SHOWS;
+const MAX_RECENT_SONGS = HISTORY.MAX_RECENT_SONGS;
 
 // ================== Storage ==================
 
-let history: ShowHistory = {
-    recentShows: [],
-    recentSongs: [],
-    lastBreakTime: 0
-};
+let history: ShowHistory = loadHistory();
+
+/**
+ * 从 localStorage 加载历史
+ */
+function loadHistory(): ShowHistory {
+    if (typeof window === 'undefined') {
+        // SSR 环境
+        return getEmptyHistory();
+    }
+
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored) as ShowHistory;
+            // 迁移旧格式：如果歌曲是字符串数组，转换为带时间戳的格式
+            if (parsed.recentSongs.length > 0 && typeof parsed.recentSongs[0] === 'string') {
+                parsed.recentSongs = (parsed.recentSongs as unknown as string[]).map(title => ({
+                    title,
+                    timestamp: Date.now()
+                }));
+            }
+            return parsed;
+        }
+    } catch (e) {
+        console.warn('[ShowHistory] Failed to load from localStorage:', e);
+    }
+
+    return getEmptyHistory();
+}
+
+/**
+ * 保存历史到 localStorage
+ */
+function saveHistory(): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    } catch (e) {
+        console.warn('[ShowHistory] Failed to save to localStorage:', e);
+    }
+}
+
+/**
+ * 获取空历史对象
+ */
+function getEmptyHistory(): ShowHistory {
+    return {
+        recentShows: [],
+        recentSongs: [],
+        lastBreakTime: 0
+    };
+}
 
 // ================== Core Functions ==================
 
@@ -54,6 +106,8 @@ export function recordShow(concept: string, style: string, hosts: string[] = [])
     if (history.recentShows.length > MAX_RECENT_SHOWS) {
         history.recentShows = history.recentShows.slice(-MAX_RECENT_SHOWS);
     }
+
+    saveHistory();
 }
 
 /**
@@ -62,14 +116,24 @@ export function recordShow(concept: string, style: string, hosts: string[] = [])
 export function recordSong(songTitle: string): void {
     cleanupHistory();
 
-    if (!history.recentSongs.includes(songTitle)) {
-        history.recentSongs.push(songTitle);
+    // 检查是否已存在（不区分大小写）
+    const exists = history.recentSongs.some(
+        s => s.title.toLowerCase() === songTitle.toLowerCase()
+    );
+
+    if (!exists) {
+        history.recentSongs.push({
+            title: songTitle,
+            timestamp: Date.now()
+        });
     }
 
     // 限制数量
     if (history.recentSongs.length > MAX_RECENT_SONGS) {
         history.recentSongs = history.recentSongs.slice(-MAX_RECENT_SONGS);
     }
+
+    saveHistory();
 }
 
 /**
@@ -77,6 +141,7 @@ export function recordSong(songTitle: string): void {
  */
 export function recordBreak(): void {
     history.lastBreakTime = Date.now();
+    saveHistory();
 }
 
 /**
@@ -106,9 +171,10 @@ export function isDuplicateConcept(concept: string): boolean {
  */
 export function isSongPlayed(songTitle: string): boolean {
     cleanupHistory();
+    const lowerTitle = songTitle.toLowerCase();
     return history.recentSongs.some(s =>
-        s.toLowerCase().includes(songTitle.toLowerCase()) ||
-        songTitle.toLowerCase().includes(s.toLowerCase())
+        s.title.toLowerCase().includes(lowerTitle) ||
+        lowerTitle.includes(s.title.toLowerCase())
     );
 }
 
@@ -125,7 +191,7 @@ export function getRecentConcepts(): string[] {
  */
 export function getRecentSongs(): string[] {
     cleanupHistory();
-    return [...history.recentSongs];
+    return history.recentSongs.map(s => s.title);
 }
 
 /**
@@ -140,11 +206,8 @@ export function getHistory(): ShowHistory {
  * 重置历史（用于测试）
  */
 export function resetHistory(): void {
-    history = {
-        recentShows: [],
-        recentSongs: [],
-        lastBreakTime: 0
-    };
+    history = getEmptyHistory();
+    saveHistory();
 }
 
 // ================== Helper Functions ==================
@@ -155,7 +218,16 @@ export function resetHistory(): void {
 function cleanupHistory(): void {
     const cutoff = Date.now() - HISTORY_DURATION_MS;
 
+    const beforeShows = history.recentShows.length;
+    const beforeSongs = history.recentSongs.length;
+
     history.recentShows = history.recentShows.filter(s => s.timestamp > cutoff);
+    history.recentSongs = history.recentSongs.filter(s => s.timestamp > cutoff);
+
+    // 如果有清理，保存
+    if (history.recentShows.length < beforeShows || history.recentSongs.length < beforeSongs) {
+        saveHistory();
+    }
 }
 
 /**

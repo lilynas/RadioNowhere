@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Play, Pause, Square, Radio, Disc3, MessageCircle, Send,
+    Play, Pause, Radio, Disc3, MessageCircle, Send,
     Volume2, VolumeX, ChevronDown, ChevronUp, Loader2,
-    SkipBack, SkipForward, Activity, Cpu, Music, Mic2,
+    SkipBack, SkipForward, Cpu, Music, Mic2,
     Layers, Zap, Clock, RotateCcw
 } from 'lucide-react';
 import { directorAgent } from '@/lib/agents/director_agent';
@@ -59,72 +59,6 @@ const AgentConsole = React.memo(({ statuses }: { statuses: Record<string, AgentS
 });
 
 AgentConsole.displayName = 'AgentConsole';
-
-/**
- * System Terminal - 内部日志查看器
- */
-const SystemTerminal = React.memo(({ logs, onClose }: { logs: LogEvent[], onClose: () => void }) => {
-    const scrollRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, [logs]);
-
-    return (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            className="absolute inset-x-4 top-20 bottom-32 bg-[#050505]/95 backdrop-blur-lg border border-emerald-500/20 rounded-3xl z-50 flex flex-col overflow-hidden shadow-2xl"
-        >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/5">
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.2em] font-mono">System Matrix Internal</span>
-                </div>
-                <button onClick={onClose} className="text-neutral-500 hover:text-white transition-colors">
-                    <Square size={14} />
-                </button>
-            </div>
-            <div
-                ref={scrollRef}
-                className="flex-1 p-6 font-mono text-[11px] overflow-y-auto space-y-2 no-scrollbar scroll-smooth"
-            >
-                {logs.length === 0 && (
-                    <div className="text-neutral-700 italic">Initializing kernel... awaiting signal.</div>
-                )}
-                {logs.map((log, i) => (
-                    <div key={i} className="flex gap-3 leading-relaxed">
-                        <span className="text-neutral-700 shrink-0">[{new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span>
-                        <span className={`shrink-0 font-bold uppercase w-16 ${log.agent === 'WRITER' ? 'text-blue-500' :
-                            log.agent === 'DIRECTOR' ? 'text-amber-500' :
-                                log.agent === 'TTS' ? 'text-purple-500' : 'text-neutral-500'
-                            }`}>{log.agent}</span>
-                        <span className={`break-all ${log.level === 'error' ? 'text-red-400' :
-                            log.level === 'warn' ? 'text-amber-400' :
-                                log.level === 'trace' ? 'text-neutral-500' : 'text-neutral-300'
-                            }`}>
-                            {log.message}
-                            {log.details && (
-                                <span className="block mt-1 opacity-50 bg-white/5 p-1 rounded">
-                                    {JSON.stringify(log.details)}
-                                </span>
-                            )}
-                        </span>
-                    </div>
-                ))}
-            </div>
-            <div className="px-6 py-3 border-t border-white/5 bg-black/40 text-[9px] text-neutral-600 font-mono flex justify-between">
-                <span>ENCRYPTION: AES-256-GCM</span>
-                <span>STATUS: OPERATIONAL</span>
-            </div>
-        </motion.div>
-    );
-});
-
-SystemTerminal.displayName = 'SystemTerminal';
 
 /**
  * Subtitle Display - 动态滚动字幕 (歌词样式)
@@ -187,14 +121,16 @@ export default function RadioPlayer() {
     const [isMuted, setIsMuted] = useState(false);
     const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatus>>({});
     const [currentScript, setCurrentScript] = useState<ScriptEvent | null>(null);
-    const [timeline, setTimeline] = useState<TimelineBlock[]>([]);
+    // 扩展 TimelineBlock 支持历史标记
+    type ExtendedBlock = TimelineBlock & { isHistory?: boolean; showTitle?: string };
+    const [timeline, setTimeline] = useState<ExtendedBlock[]>([]);
     const [currentBlockId, setCurrentBlockId] = useState<string | null>(null);
     const [agentLogs, setAgentLogs] = useState<LogEvent[]>([]);
     const [isInitializing, setIsInitializing] = useState(false);
 
     // UI 交互
     const [showMailbox, setShowMailbox] = useState(false);
-    const [showTerminal, setShowTerminal] = useState(false);
+
     const [userMessage, setUserMessage] = useState("");
     const [showTimeline, setShowTimeline] = useState(true);
     const [pendingMailCount, setPendingMailCount] = useState(0);
@@ -220,7 +156,24 @@ export default function RadioPlayer() {
         });
 
         const cleanupTimeline = radioMonitor.on('timeline', (data: ShowTimeline) => {
-            setTimeline(data.blocks);
+            // 保留历史：将当前 timeline 标记为历史，添加新的
+            setTimeline(prev => {
+                // 如果之前有 timeline，先将其标记为历史
+                const prevWithHistory = prev.map(block => ({
+                    ...block,
+                    isHistory: true
+                }));
+                // 新的 timeline blocks
+                const newBlocks = data.blocks.map(block => ({
+                    ...block,
+                    isHistory: false,
+                    showTitle: data.title
+                }));
+                // 保留最近 3 期节目的历史
+                const historyLimit = 60; // 大约 3 期节目
+                const combined = [...prevWithHistory, ...newBlocks].slice(-historyLimit);
+                return combined;
+            });
         });
 
         const cleanupLogs = radioMonitor.on('log', (data: LogEvent) => {
@@ -350,12 +303,7 @@ export default function RadioPlayer() {
             {/* 1. Agent Console */}
             <AgentConsole statuses={agentStatuses} />
 
-            {/* Matrix Terminal Overlay */}
-            <AnimatePresence>
-                {showTerminal && (
-                    <SystemTerminal logs={agentLogs} onClose={() => setShowTerminal(false)} />
-                )}
-            </AnimatePresence>
+
 
             {/* 2. Main Content Area (Subtitles & Visuals) */}
             <div className="flex-1 flex flex-col relative overflow-hidden">
@@ -399,9 +347,17 @@ export default function RadioPlayer() {
                             <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest flex items-center gap-1.5">
                                 <Clock size={10} /> Program Schedule
                             </span>
-                            <button onClick={() => setShowTimeline(false)} className="text-neutral-500 hover:text-white transition-colors">
-                                <ChevronDown size={14} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setTimeline(prev => prev.filter(b => !b.isHistory))}
+                                    className="text-[9px] text-neutral-600 hover:text-red-400 transition-colors px-2 py-0.5 rounded border border-neutral-800 hover:border-red-900"
+                                >
+                                    Clear History
+                                </button>
+                                <button onClick={() => setShowTimeline(false)} className="text-neutral-500 hover:text-white transition-colors">
+                                    <ChevronDown size={14} />
+                                </button>
+                            </div>
                         </div>
                         <div
                             ref={timelineScrollRef}
@@ -409,26 +365,32 @@ export default function RadioPlayer() {
                         >
                             {timeline.map((block, i) => {
                                 const isActive = block.id === currentBlockId;
+                                const isHistory = block.isHistory;
                                 return (
                                     <motion.button
-                                        key={block.id}
+                                        key={`${block.id}-${i}`}
                                         data-id={block.id}
-                                        onClick={() => jumpToBlock(i)}
+                                        onClick={() => !isHistory && jumpToBlock(i)}
+                                        disabled={isHistory}
                                         className={`w-full text-left px-4 py-3 rounded-2xl transition-all duration-300 flex items-center gap-4 ${isActive
                                             ? 'bg-emerald-500/10 border border-emerald-500/30 ring-1 ring-emerald-500/10'
-                                            : 'hover:bg-white/5 border border-transparent opacity-40 hover:opacity-100'
+                                            : isHistory
+                                                ? 'opacity-20 border border-transparent cursor-default'
+                                                : 'hover:bg-white/5 border border-transparent opacity-40 hover:opacity-100'
                                             }`}
                                     >
-                                        <div className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${isActive ? 'bg-emerald-500 text-black' : 'bg-neutral-900 text-neutral-600'
+                                        <div className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${isActive ? 'bg-emerald-500 text-black' :
+                                            isHistory ? 'bg-neutral-900/50 text-neutral-700' :
+                                                'bg-neutral-900 text-neutral-600'
                                             }`}>
                                             {block.type === 'talk' ? <Mic2 size={14} /> : block.type === 'music' ? <Music size={14} /> : <Zap size={14} />}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className={`text-xs font-bold truncate ${isActive ? 'text-white' : 'text-neutral-300'}`}>
+                                            <div className={`text-xs font-bold truncate ${isActive ? 'text-white' : isHistory ? 'text-neutral-600' : 'text-neutral-300'}`}>
                                                 {getBlockLabel(block)}
                                             </div>
                                             <div className="text-[10px] text-neutral-600 uppercase font-mono mt-0.5">
-                                                {block.type} • {isActive ? 'NOW AIRING' : 'PENDING'}
+                                                {block.type} • {isActive ? 'NOW AIRING' : isHistory ? 'PLAYED' : 'PENDING'}
                                             </div>
                                         </div>
                                         {isActive && (
@@ -458,7 +420,7 @@ export default function RadioPlayer() {
                             }`}
                     >
                         {isInitializing ? <Loader2 className="animate-spin" size={18} /> :
-                            isConnected ? <Square className="fill-current" size={18} /> : <Play className="fill-current" size={18} />}
+                            isConnected ? <Pause className="fill-current" size={18} /> : <Play className="fill-current" size={18} />}
                         <span className="font-bold text-sm">{isConnected ? 'Disconnect' : 'Connect Now'}</span>
                     </motion.button>
 
@@ -466,7 +428,6 @@ export default function RadioPlayer() {
                         <PlayerActionBtn onClick={skipBackward} icon={<SkipBack size={20} />} label="Prev" disabled={!isConnected} />
                         <PlayerActionBtn onClick={togglePlay} active={isPaused} icon={isPaused ? <Play size={20} /> : <Pause size={20} />} label="Flow" disabled={!isConnected} />
                         <PlayerActionBtn onClick={skipForward} icon={<SkipForward size={20} />} label="Next" disabled={!isConnected} />
-                        <PlayerActionBtn onClick={() => setShowTerminal(!showTerminal)} active={showTerminal} icon={<Activity size={20} />} label="System" />
                         <PlayerActionBtn onClick={() => setShowTimeline(!showTimeline)} active={showTimeline} icon={<Layers size={20} />} label="List" />
                         <div className="relative">
                             <PlayerActionBtn onClick={() => setShowMailbox(true)} icon={<MessageCircle size={20} />} label="Mail" />

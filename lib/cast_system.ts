@@ -8,7 +8,18 @@ import { ALL_VOICES, VoiceName } from './types/radio_types';
 // ================== Types ==================
 
 /** 节目类型 */
-export type ShowType = 'talk' | 'interview' | 'news' | 'drama' | 'entertainment' | 'story';
+export type ShowType =
+    | 'talk'           // 脱口秀闲聊
+    | 'interview'      // 访谈对话
+    | 'news'           // 新闻资讯
+    | 'drama'          // 广播剧
+    | 'entertainment'  // 娱乐综艺
+    | 'story'          // 故事电台
+    | 'history'        // 历史故事
+    | 'science'        // 科普百科
+    | 'mystery'        // 奇闻异事
+    | 'nighttalk'      // 深夜心声
+    | 'music';         // 音乐专题
 
 /** 角色定义 */
 export interface RoleDefinition {
@@ -204,6 +215,118 @@ export const SHOW_TEMPLATES: ShowTemplate[] = [
                 personality: '偶尔点评，画龙点睛'
             }
         ]
+    },
+    {
+        type: 'history',
+        name: '历史风云',
+        description: '历史故事、人物传记、朝代兴衰',
+        castSize: [1, 3],
+        roles: [
+            {
+                id: 'narrator',
+                name: '讲述者',
+                voiceTraits: { gender: 'male', style: ['mature', 'authoritative', 'storytelling'] },
+                personality: '声音厚重有历史感，善于营造氛围'
+            },
+            {
+                id: 'historian',
+                name: '历史学者',
+                voiceTraits: { gender: 'female', style: ['knowledgeable', 'thoughtful'] },
+                personality: '博学多闻，提供深度解读'
+            },
+            {
+                id: 'character',
+                name: '历史人物',
+                voiceTraits: { gender: 'male', style: ['dramatic', 'expressive'] },
+                personality: '演绎历史人物的独白或对话'
+            }
+        ]
+    },
+    {
+        type: 'science',
+        name: '科普百科',
+        description: '科学知识、自然奥秘、前沿科技',
+        castSize: [2, 3],
+        roles: [
+            {
+                id: 'host',
+                name: '主持人',
+                voiceTraits: { gender: 'female', style: ['curious', 'bright', 'friendly'] },
+                personality: '充满好奇心，善于提问，代表听众视角'
+            },
+            {
+                id: 'expert',
+                name: '科学家',
+                voiceTraits: { gender: 'male', style: ['knowledgeable', 'patient', 'enthusiastic'] },
+                personality: '专业但不枯燥，善于用生活化例子解释'
+            },
+            {
+                id: 'narrator',
+                name: '旁白',
+                voiceTraits: { gender: 'neutral', style: ['calm', 'informative'] },
+                personality: '补充背景知识和过渡'
+            }
+        ]
+    },
+    {
+        type: 'mystery',
+        name: '奇闻异事',
+        description: '都市传说、未解之谜、灵异故事、悬疑推理',
+        castSize: [1, 2],
+        roles: [
+            {
+                id: 'narrator',
+                name: '讲述者',
+                voiceTraits: { gender: 'male', style: ['mysterious', 'deep', 'suspenseful'] },
+                personality: '声音低沉神秘，善于营造悬疑氛围'
+            },
+            {
+                id: 'witness',
+                name: '当事人',
+                voiceTraits: { gender: 'female', style: ['nervous', 'authentic'] },
+                personality: '以第一人称讲述亲身经历'
+            }
+        ]
+    },
+    {
+        type: 'nighttalk',
+        name: '深夜心声',
+        description: '情感倾诉、人生感悟、心理疗愈',
+        castSize: [1, 2],
+        roles: [
+            {
+                id: 'host',
+                name: '夜话主播',
+                voiceTraits: { gender: 'female', style: ['warm', 'gentle', 'empathetic'] },
+                personality: '温柔治愈，善于倾听，给予温暖回应'
+            },
+            {
+                id: 'caller',
+                name: '听众来电',
+                voiceTraits: { gender: 'male', style: ['sincere', 'emotional'] },
+                personality: '真诚倾诉，分享故事'
+            }
+        ]
+    },
+    {
+        type: 'music',
+        name: '音乐专题',
+        description: '音乐赏析、歌手特辑、曲风探索',
+        castSize: [1, 2],
+        roles: [
+            {
+                id: 'dj',
+                name: 'DJ',
+                voiceTraits: { gender: 'male', style: ['cool', 'knowledgeable', 'passionate'] },
+                personality: '音乐品味独特，点评有深度'
+            },
+            {
+                id: 'guest',
+                name: '音乐人',
+                voiceTraits: { gender: 'female', style: ['artistic', 'thoughtful'] },
+                personality: '分享创作故事和音乐见解'
+            }
+        ]
     }
 ];
 
@@ -302,24 +425,39 @@ export class CastDirector {
 
     /**
      * 随机选择节目类型
+     * 多样化节目：不过度依赖时段，注重内容丰富性
      */
     randomShowType(): ShowType {
         const hour = new Date().getHours();
+        const rand = Math.random();
 
-        // 根据时段偏好不同节目类型
-        if (hour >= 6 && hour < 9) {
-            // 早间：新闻、脱口秀
-            return Math.random() > 0.5 ? 'news' : 'talk';
-        } else if (hour >= 9 && hour < 18) {
-            // 白天：多种类型
-            const types: ShowType[] = ['talk', 'interview', 'entertainment'];
-            return types[Math.floor(Math.random() * types.length)];
-        } else if (hour >= 18 && hour < 22) {
-            // 傍晚：娱乐、访谈
-            return Math.random() > 0.5 ? 'entertainment' : 'interview';
+        // 所有节目类型池
+        const allTypes: ShowType[] = [
+            'talk', 'interview', 'story', 'history',
+            'science', 'mystery', 'entertainment', 'music', 'nighttalk'
+        ];
+
+        // 时段只轻微影响概率，不硬性限制
+        if (hour >= 6 && hour < 10) {
+            // 早间：略偏向轻松内容
+            if (rand < 0.15) return 'news';
+            if (rand < 0.3) return 'science';
+            const morningPool: ShowType[] = ['talk', 'interview', 'music', 'history'];
+            return morningPool[Math.floor(Math.random() * morningPool.length)];
+        } else if (hour >= 22 || hour < 2) {
+            // 深夜：略偏向陪伴型内容
+            if (rand < 0.25) return 'nighttalk';
+            if (rand < 0.4) return 'mystery';
+            const nightPool: ShowType[] = ['story', 'history', 'talk', 'music'];
+            return nightPool[Math.floor(Math.random() * nightPool.length)];
         } else {
-            // 深夜/凌晨：故事、脱口秀
-            return Math.random() > 0.3 ? 'story' : 'talk';
+            // 其他时段：完全随机
+            // 排除 news（低频）和 drama（复杂度高）
+            const regularPool: ShowType[] = [
+                'talk', 'interview', 'story', 'history',
+                'science', 'mystery', 'entertainment', 'music'
+            ];
+            return regularPool[Math.floor(Math.random() * regularPool.length)];
         }
     }
 

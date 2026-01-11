@@ -6,6 +6,7 @@
 import { searchMusic, getLyrics, IGDMusicTrack, searchMusicWithValidation } from '../gdmusic_service';
 import { ShowTimeline } from '../types/radio_types';
 import { recordShow, recordSong, getRecentConcepts, getRecentSongs, isDuplicateConcept } from '../show_history';
+import { NEWS_SERVICE } from '../constants';
 
 // ================== Tool Definitions ==================
 
@@ -35,6 +36,13 @@ export const WRITER_TOOLS: ToolDefinition[] = [
         parameters: [
             { name: 'song_title', type: 'string', description: '歌曲名称', required: true },
             { name: 'lyric_id', type: 'string', description: '歌词ID (从 search_music 结果获取)', required: false }
+        ]
+    },
+    {
+        name: 'fetch_news',
+        description: '获取今日实时热点新闻。可用于任何需要话题素材的节目：新闻播报、脱口秀、时事评论、闲聊话题等。返回当日热点新闻列表，编剧可自由选用。',
+        parameters: [
+            { name: 'count', type: 'number', description: '需要的新闻条数（默认10条，最多15条）', required: false }
         ]
     },
     {
@@ -79,6 +87,9 @@ export async function executeToolCall(
             case 'get_lyrics':
                 return await executeGetLyrics(args.song_title as string, args.lyric_id as string | undefined);
 
+            case 'fetch_news':
+                return await executeFetchNews(args.count as number | undefined);
+
             case 'check_duplicate':
                 return executeCheckDuplicate(args.concept as string);
 
@@ -98,7 +109,7 @@ export async function executeToolCall(
 async function executeSearchMusic(query: string, mood?: string): Promise<ToolResult> {
     try {
         // 使用带验证的搜索，确保只返回可播放的歌曲
-        const validatedTracks = await searchMusicWithValidation(query, 5);
+        const validatedTracks = await searchMusicWithValidation(query, 8); // 增加搜索数量
 
         // 过滤掉已播放的歌曲
         const recentSongs = getRecentSongs();
@@ -109,13 +120,16 @@ async function executeSearchMusic(query: string, mood?: string): Promise<ToolRes
             )
         );
 
-        const results = filteredTracks.map(({ track, url }) => ({
+        // 随机打乱顺序，避免总是选第一首
+        const shuffled = filteredTracks.sort(() => Math.random() - 0.5);
+
+        const results = shuffled.map(({ track, url }) => ({
             title: track.name,
             artist: track.artist.join(', '),
             album: track.album,
             id: track.id,
             lyricId: track.lyricId,
-            url: url, // 返回已验证的 URL
+            url: url,
             source: track.source
         }));
 
@@ -126,12 +140,16 @@ async function executeSearchMusic(query: string, mood?: string): Promise<ToolRes
             };
         }
 
+        // 生成随机推荐索引
+        const recommendIndex = Math.floor(Math.random() * Math.min(3, results.length));
+
         return {
             success: true,
             data: {
                 query,
                 results,
-                note: `找到 ${results.length} 首可播放的歌曲（已验证链接有效）`
+                recommendedIndex: recommendIndex,
+                note: `找到 ${results.length} 首可播放的歌曲。建议选择第 ${recommendIndex + 1} 首（索引 ${recommendIndex}），或从列表中随机选择一首，不要总是选第一首！`
             }
         };
     } catch (error) {
@@ -170,6 +188,54 @@ async function executeGetLyrics(songTitle: string, lyricId?: string): Promise<To
     }
 }
 
+/**
+ * 获取实时新闻
+ */
+async function executeFetchNews(count?: number): Promise<ToolResult> {
+    try {
+        const newsUrl = `${NEWS_SERVICE.API_URL}?key=${NEWS_SERVICE.API_KEY}`;
+
+        // 通过代理调用，避免 CORS
+        const response = await fetch('/api/proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: newsUrl,
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            })
+        });
+
+        if (!response.ok) {
+            return { success: false, error: `新闻API请求失败: ${response.status}` };
+        }
+
+        const data = await response.json();
+
+        if (data.code !== 201 || !data.data?.news) {
+            return { success: false, error: '新闻API返回异常' };
+        }
+
+        // 限制返回条数
+        const maxCount = Math.min(count || 10, 15);
+        const newsList = data.data.news.slice(0, maxCount);
+
+        return {
+            success: true,
+            data: {
+                date: data.data.date || new Date().toLocaleDateString('zh-CN'),
+                title: data.data.title || '今日新闻快讯',
+                news: newsList,
+                weiyu: data.data.weiyu || null,
+                count: newsList.length,
+                note: '以上为今日实时新闻，可选择2-5条有趣的新闻进行播报和点评'
+            }
+        };
+    } catch (error) {
+        return { success: false, error: `获取新闻失败: ${String(error)}` };
+    }
+}
+
 function executeCheckDuplicate(concept: string): ToolResult {
     const isDuplicate = isDuplicateConcept(concept);
     const recentConcepts = getRecentConcepts();
@@ -202,10 +268,10 @@ function executeSubmitShow(
             };
         }
 
-        // 记录到历史
-        recordShow(timeline.title || 'Untitled', 'default', []);
+        // 注意：不在这里记录历史，改为节目播放完成后由 director_agent 记录
+        // recordShow 已移除
 
-        // 记录使用的歌曲
+        // 记录使用的歌曲（预记录，避免后续重复选曲）
         for (const block of timeline.blocks) {
             if (block.type === 'music' && block.search) {
                 recordSong(block.search);
