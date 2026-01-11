@@ -1,6 +1,6 @@
 /**
- * Writer Agent - 编剧 Agent
- * 根据导演指令生成节目台本，选择主持人、设置语气
+ * Writer Agent - 编剧 Agent (ReAct 版本)
+ * 具备工具调用能力，可搜索音乐、获取歌词、自我校验
  */
 
 import { getSettings } from '../settings_store';
@@ -11,10 +11,18 @@ import {
 import { globalState } from '../global_state';
 import { radioMonitor } from '../radio_monitor';
 import { getVoiceListForPrompt } from '../voice_provider';
+import {
+    executeToolCall,
+    getHistoryContext,
+    getToolsDescription,
+    WRITER_TOOLS,
+    ToolResult
+} from './writer_tools';
 
 // ================== Constants ==================
 
 const MAX_PARSE_RETRIES = 3;
+const MAX_REACT_LOOPS = 10;
 
 // ================== Radio Setting (Dynamic) ==================
 
@@ -22,67 +30,53 @@ function getRadioSetting(): string {
     const now = new Date();
     const hour = now.getHours();
 
-    // 根据时段选择电台风格
-    let stationName = '';
-    let positioning = '';
-    let style = '';
-    let host1Desc = '';
-    let host2Desc = '';
+    // 根据时段提供风格建议（不写死主持人名字）
+    let stationSuggestion = '';
+    let styleSuggestion = '';
+    let hostStyleSuggestion = '';
 
     if (hour >= 6 && hour < 9) {
-        stationName = '「晨光电台」';
-        positioning = '元气早间节目，开启美好一天';
-        style = '轻快活力、正能量、元气满满';
-        host1Desc = 'host1 (晨曦)：女，活力开朗，擅长分享生活小确幸';
-        host2Desc = 'host2 (阿明)：男，阳光幽默，擅长讲冷笑话叫醒听众';
+        stationSuggestion = '早间节目风格：元气、活力、开启美好一天';
+        styleSuggestion = '轻快活力、正能量、元气满满';
+        hostStyleSuggestion = '主持人风格建议：活力开朗的女主持 + 阳光幽默的男主持';
     } else if (hour >= 9 && hour < 12) {
-        stationName = '「工作伴侣」';
-        positioning = '工作时段背景音乐台，提升效率';
-        style = '轻松不打扰、专注氛围、偶尔分享小知识';
-        host1Desc = 'host1 (静雯)：女，知性温和，分享工作效率技巧';
-        host2Desc = 'host2 (大卫)：男，沉稳专业，推荐适合工作的音乐';
+        stationSuggestion = '工作时段风格：背景音乐台、提升效率';
+        styleSuggestion = '轻松不打扰、专注氛围、偶尔分享小知识';
+        hostStyleSuggestion = '主持人风格建议：知性温和 + 沉稳专业';
     } else if (hour >= 12 && hour < 14) {
-        stationName = '「午间慢时光」';
-        positioning = '午休陪伴电台，放松身心';
-        style = '慵懒惬意、轻松聊天、午后小憩感';
-        host1Desc = 'host1 (小悠)：女，慵懒甜美，聊美食和生活';
-        host2Desc = 'host2 (懒懒)：男，随性幽默，分享有趣见闻';
+        stationSuggestion = '午间风格：午休陪伴、放松身心';
+        styleSuggestion = '慵懒惬意、轻松聊天、午后小憩感';
+        hostStyleSuggestion = '主持人风格建议：慵懒甜美 + 随性幽默';
     } else if (hour >= 14 && hour < 18) {
-        stationName = '「下午茶电台」';
-        positioning = '午后音乐时光，陪伴下午时光';
-        style = '文艺清新、下午茶氛围、indie 音乐';
-        host1Desc = 'host1 (茶茶)：女，文艺范，聊书籍和电影';
-        host2Desc = 'host2 (阿木)：男，音乐达人，推荐小众好歌';
+        stationSuggestion = '下午茶风格：文艺清新、indie 音乐';
+        styleSuggestion = '文艺清新、下午茶氛围';
+        hostStyleSuggestion = '主持人风格建议：文艺范 + 音乐达人';
     } else if (hour >= 18 && hour < 21) {
-        stationName = '「晚风电台」';
-        positioning = '傍晚归家陪伴，温情时刻';
-        style = '温情脉脉、下班放松、都市情感';
-        host1Desc = 'host1 (晚晚)：女，温柔体贴，聊情感和生活';
-        host2Desc = 'host2 (风子)：男，成熟稳重，分享人生感悟';
+        stationSuggestion = '傍晚归家风格：温情时刻、都市情感';
+        styleSuggestion = '温情脉脉、下班放松';
+        hostStyleSuggestion = '主持人风格建议：温柔体贴 + 成熟稳重';
     } else if (hour >= 21 || hour < 2) {
-        stationName = '「深夜电波」';
-        positioning = '陪伴型深夜电台，温暖治愈';
-        style = '轻松温馨、偶尔搞笑、深夜陪伴感';
-        host1Desc = 'host1 (阿静)：女，温柔知性，擅长情感话题';
-        host2Desc = 'host2 (小北)：男，幽默随和，擅长音乐推荐';
+        stationSuggestion = '深夜电台风格：陪伴型、温暖治愈';
+        styleSuggestion = '轻松温馨、偶尔搞笑、深夜陪伴感';
+        hostStyleSuggestion = '主持人风格建议：温柔知性 + 幽默随和';
     } else {
-        stationName = '「凌晨守夜人」';
-        positioning = '失眠者的陪伴，安静助眠';
-        style = '轻声细语、助眠氛围、温柔陪伴';
-        host1Desc = 'host1 (梦梦)：女，轻柔舒缓，讲睡前故事';
-        host2Desc = 'host2 (星辰)：男，低沉磁性，推荐轻音乐';
+        stationSuggestion = '凌晨助眠风格：失眠者的陪伴';
+        styleSuggestion = '轻声细语、助眠氛围、温柔陪伴';
+        hostStyleSuggestion = '主持人风格建议：轻柔舒缓 + 低沉磁性';
     }
 
-    return `你是一个现代中文网络电台的节目编排AI。
+    return `你是一个极具创意的网络电台节目制作人。
 
-电台名称：${stationName}
-定位：${positioning}
+## 时段参考
+${stationSuggestion}
+${styleSuggestion}
+${hostStyleSuggestion}
 
-常驻主持人：
-- ${host1Desc}
-- ${host2Desc}
-
-节目风格：${style}
+## 重要提示
+- 你可以完全自由地创建电台名称和主持人人设
+- 不要每次都用同样的设定，发挥创意！
+- 可以模拟全球任何风格的电台：BBC、NPR、日本深夜放送、复古调频、海盗电台等
+- 主持人的名字、性格、说话方式都由你决定
 `;
 }
 
@@ -92,6 +86,7 @@ import { Cast, castDirector, ShowType } from '../cast_system';
 
 export class WriterAgent {
     private currentCast: Cast | null = null;
+    private conversationHistory: Array<{ role: string; content: string }> = [];
 
     /**
      * 获取当前演员阵容
@@ -101,11 +96,8 @@ export class WriterAgent {
     }
 
     /**
-     * 生成节目时间线
-     * @param duration 目标时长（秒），默认 120 秒（2分钟）
-     * @param theme 节目主题（可选）
-     * @param userRequest 用户投稿内容（可选）
-     * @param showType 指定节目类型（可选，不指定则随机）
+     * 生成节目时间线 (ReAct 版本)
+     * 使用多轮对话和工具调用
      */
     async generateTimeline(
         duration: number = 120,
@@ -117,32 +109,341 @@ export class WriterAgent {
         const selectedShowType = showType || castDirector.randomShowType();
         this.currentCast = castDirector.selectCast(selectedShowType);
 
-        radioMonitor.updateStatus('WRITER', 'BUSY', `Generating ${selectedShowType} script...`);
-        radioMonitor.log('WRITER', `Selected Show Type: ${selectedShowType}`);
-        const prompt = this.buildPrompt(duration, theme, userRequest);
-        radioMonitor.log('WRITER', 'Prompt built, complexity: ' + prompt.length + ' chars');
+        radioMonitor.updateStatus('WRITER', 'BUSY', `ReAct Loop: ${selectedShowType}`);
+        radioMonitor.log('WRITER', `Starting ReAct loop for ${selectedShowType}`);
 
-        let lastError: Error | null = null;
+        // 2. 构建 ReAct 系统提示
+        const systemPrompt = this.buildReActSystemPrompt(duration, theme, userRequest);
 
-        for (let attempt = 0; attempt < MAX_PARSE_RETRIES; attempt++) {
+        // 3. 初始化对话历史
+        this.conversationHistory = [];
+
+        // 4. ReAct 循环
+        let finalTimeline: ShowTimeline | null = null;
+
+        for (let loop = 0; loop < MAX_REACT_LOOPS; loop++) {
+            radioMonitor.log('WRITER', `ReAct loop ${loop + 1}/${MAX_REACT_LOOPS}`);
+
             try {
-                radioMonitor.log('WRITER', `Generation attempt ${attempt + 1}/${MAX_PARSE_RETRIES}...`);
-                const response = await this.callAI(prompt + (attempt > 0 ? this.getRetryHint(lastError) : ''));
+                // 调用 AI
+                const response = await this.callReActAI(systemPrompt);
 
-                radioMonitor.log('WRITER', 'AI responded, starting parser...', 'trace');
-                const timeline = this.parseResponse(response);
+                // 发布 AI 原始输出
+                radioMonitor.emitThought('output', response);
 
-                radioMonitor.log('WRITER', `Parse successful: ${timeline.blocks.length} blocks generated`, 'info', { id: timeline.id });
-                return timeline;
+                // 解析工具调用
+                const toolCall = this.parseToolCall(response);
+
+                if (toolCall) {
+                    radioMonitor.log('WRITER', `Tool call: ${toolCall.name}`, 'info');
+                    radioMonitor.emitThought('tool_call', JSON.stringify(toolCall.args, null, 2), toolCall.name);
+
+                    // 执行工具
+                    const result = await executeToolCall(
+                        toolCall.name,
+                        toolCall.args,
+                        (json) => this.parseResponse(json)
+                    );
+
+                    // 发布工具结果
+                    radioMonitor.emitThought('tool_result', JSON.stringify(result, null, 2), toolCall.name);
+
+                    // 添加到对话历史
+                    this.conversationHistory.push({
+                        role: 'assistant',
+                        content: response
+                    });
+                    this.conversationHistory.push({
+                        role: 'user',
+                        content: `Tool Result for ${toolCall.name}:\n${JSON.stringify(result, null, 2)}`
+                    });
+
+                    // 如果是 submit_show 且成功，结束循环
+                    if (toolCall.name === 'submit_show' && result.success) {
+                        radioMonitor.log('WRITER', 'Show submitted successfully!', 'info');
+                        // 从工具调用参数中解析 timeline（不是从 result）
+                        try {
+                            const timelineJson = toolCall.args.timeline_json as string;
+                            finalTimeline = this.parseResponse(timelineJson);
+                            break;
+                        } catch (e) {
+                            radioMonitor.log('WRITER', `Parse after submit failed: ${e}`, 'warn');
+                            // 继续循环修正
+                        }
+                    }
+                } else {
+                    // 没有工具调用，尝试直接解析为 JSON
+                    // 跳过看起来像工具结果的响应
+                    if (response.includes('"success"') && response.includes('"data"')) {
+                        radioMonitor.log('WRITER', 'Skipping tool result format', 'trace');
+                        this.conversationHistory.push({
+                            role: 'assistant',
+                            content: response
+                        });
+                        this.conversationHistory.push({
+                            role: 'user',
+                            content: '请使用 submit_show 工具提交最终节目。'
+                        });
+                        continue;
+                    }
+
+                    try {
+                        finalTimeline = this.parseResponse(response);
+                        radioMonitor.log('WRITER', 'Direct JSON parse successful', 'info');
+                        break;
+                    } catch {
+                        // 添加提示继续
+                        this.conversationHistory.push({
+                            role: 'assistant',
+                            content: response
+                        });
+                        this.conversationHistory.push({
+                            role: 'user',
+                            content: '请使用 submit_show 工具提交最终节目，或者直接输出有效的 JSON。'
+                        });
+                    }
+                }
             } catch (error) {
-                lastError = error as Error;
-                console.warn(`Parse attempt ${attempt + 1} failed:`, error);
+                radioMonitor.log('WRITER', `Loop error: ${error}`, 'error');
+                this.conversationHistory.push({
+                    role: 'user',
+                    content: `发生错误: ${error}。请修正后重试。`
+                });
             }
         }
 
-        // 所有重试失败，返回默认内容
-        radioMonitor.updateStatus('WRITER', 'ERROR', 'AI Generation failed, using fallback');
-        return this.getDefaultTimeline();
+        // 5. 如果循环结束仍无结果，使用默认
+        if (!finalTimeline) {
+            radioMonitor.updateStatus('WRITER', 'ERROR', 'ReAct loop failed, using fallback');
+            return this.getDefaultTimeline();
+        }
+
+        radioMonitor.updateStatus('WRITER', 'IDLE', 'Generation complete');
+        return finalTimeline;
+    }
+
+    /**
+     * 构建 ReAct 系统提示
+     */
+    private buildReActSystemPrompt(duration: number, theme?: string, userRequest?: string): string {
+        const historyContext = getHistoryContext();
+        const toolsDesc = getToolsDescription();
+
+        return `${getRadioSetting()}
+
+${this.getTimeContext()}
+
+## 你的任务
+生成一段约 ${duration} 秒的电台节目。
+
+## 可用工具
+${toolsDesc}
+
+## 工具调用格式
+使用以下 JSON 格式调用工具：
+\`\`\`json
+{"tool": "工具名", "args": {"参数名": "值"}}
+\`\`\`
+
+## 工作流程
+1. 先用 check_duplicate 确认你的节目概念不与近期雷同
+2. 用 search_music 搜索合适的歌曲
+3. (可选) 用 get_lyrics 获取歌词
+4. 编写完整脚本后，用 submit_show 提交
+
+${historyContext}
+
+${theme ? `## 主题要求\n${theme}\n` : ''}
+${userRequest ? `## 听众来信\n"${userRequest}"\n请在节目中回应这封来信。\n` : ''}
+
+## 输出格式
+最终提交时，timeline_json 必须是以下格式：
+${this.getOutputFormatExample()}
+
+${getVoiceListForPrompt()}
+
+开始工作！首先检查节目概念是否与近期雷同。`;
+    }
+
+    /**
+     * 获取输出格式示例
+     */
+    private getOutputFormatExample(): string {
+        return `{
+  "id": "唯一ID",
+  "title": "节目标题",
+  "estimatedDuration": 120,
+  "blocks": [
+    {"type": "talk", "id": "talk-1", "scripts": [{"speaker": "host1", "text": "...", "mood": "warm"}]},
+    {"type": "music", "id": "music-1", "action": "play", "search": "歌名", "duration": 60}
+  ]
+}`;
+    }
+
+    /**
+     * 调用 ReAct AI (支持对话历史 + 指数退避重试)
+     */
+    private async callReActAI(systemPrompt: string): Promise<string> {
+        const settings = getSettings();
+        const MAX_API_RETRIES = 3;
+        const BASE_DELAY_MS = 1000;
+
+        // 构建消息
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            ...this.conversationHistory
+        ];
+
+        // 如果是首次调用，添加初始用户消息
+        if (this.conversationHistory.length === 0) {
+            messages.push({ role: 'user', content: '请开始生成节目。' });
+        }
+
+        let url: string;
+        let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        let body: unknown;
+
+        if (settings.apiType === 'gemini') {
+            // Gemini 格式
+            const endpoint = settings.endpoint || 'https://generativelanguage.googleapis.com';
+            url = `${this.normalizeEndpoint(endpoint)}/models/${settings.modelName}:generateContent`;
+            headers['x-goog-api-key'] = settings.apiKey;
+
+            // Gemini 使用 contents 格式
+            const contents = messages.map(m => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: m.content }]
+            }));
+
+            body = {
+                contents,
+                generationConfig: {
+                    temperature: 0.8,
+                    maxOutputTokens: 8192
+                }
+            };
+        } else {
+            // OpenAI 格式
+            const endpoint = settings.endpoint || '';
+            let baseUrl = endpoint.replace(/\/$/, '');
+            if (!baseUrl.endsWith('/v1')) {
+                baseUrl = `${baseUrl}/v1`;
+            }
+            url = `${baseUrl}/chat/completions`;
+            headers['Authorization'] = `Bearer ${settings.apiKey}`;
+            body = {
+                model: settings.modelName,
+                messages: messages.map(m => ({ role: m.role, content: m.content })),
+                temperature: 0.8,
+                max_tokens: 8192
+            };
+        }
+
+        // 指数退避重试
+        let lastError: Error | null = null;
+        for (let attempt = 0; attempt < MAX_API_RETRIES; attempt++) {
+            try {
+                radioMonitor.updateStatus('WRITER', 'BUSY', `Calling AI (attempt ${attempt + 1})...`);
+
+                const response = await fetch('/api/proxy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, method: 'POST', headers, body })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API Error ${response.status}: ${errorText.slice(0, 100)}`);
+                }
+
+                const data = await response.json();
+
+                if (settings.apiType === 'openai') {
+                    return data.choices?.[0]?.message?.content || '';
+                } else {
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                }
+            } catch (error) {
+                lastError = error as Error;
+                radioMonitor.log('WRITER', `API call failed (attempt ${attempt + 1}): ${error}`, 'warn');
+
+                if (attempt < MAX_API_RETRIES - 1) {
+                    // 指数退避: 1s, 2s, 4s
+                    const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+                    radioMonitor.log('WRITER', `Retrying in ${delay}ms...`, 'info');
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        throw lastError || new Error('API call failed after retries');
+    }
+
+    /**
+     * 解析工具调用 - 支持嵌套 JSON
+     */
+    private parseToolCall(response: string): { name: string; args: Record<string, unknown> } | null {
+        // 尝试找到 {"tool": ...} 结构
+        const toolIndex = response.indexOf('"tool"');
+        if (toolIndex === -1) return null;
+
+        // 找到包含 tool 的 JSON 对象的起始位置
+        let startIndex = response.lastIndexOf('{', toolIndex);
+        if (startIndex === -1) return null;
+
+        // 使用括号计数找到完整的 JSON 对象
+        let braceCount = 0;
+        let endIndex = startIndex;
+        let inString = false;
+        let escapeNext = false;
+
+        for (let i = startIndex; i < response.length; i++) {
+            const char = response[i];
+
+            if (escapeNext) {
+                escapeNext = false;
+                continue;
+            }
+
+            if (char === '\\') {
+                escapeNext = true;
+                continue;
+            }
+
+            if (char === '"') {
+                inString = !inString;
+                continue;
+            }
+
+            if (!inString) {
+                if (char === '{') braceCount++;
+                if (char === '}') {
+                    braceCount--;
+                    if (braceCount === 0) {
+                        endIndex = i + 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (braceCount !== 0) return null;
+
+        const jsonStr = response.slice(startIndex, endIndex);
+
+        try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.tool && parsed.args) {
+                return {
+                    name: parsed.tool,
+                    args: parsed.args
+                };
+            }
+        } catch {
+            // JSON 解析失败
+        }
+
+        return null;
     }
 
 
@@ -182,7 +483,7 @@ export class WriterAgent {
         } else if (hour >= 21 && hour < 24) {
             period = '深夜';
             mood = '静谧温柔，夜猫子时光';
-            hosts = '深夜主播阿静';
+            hosts = '深夜主播';
         } else {
             period = '凌晨';
             mood = '梦幻朦胧，失眠者的陪伴';
@@ -269,11 +570,14 @@ ${castDescription}
 
 ## 可用类型
 
-### speaker (主持人)
-- "host1": 阿静（女）
-- "host2": 小北（男）
+### speaker (主持人ID)
+你可以自由定义主持人的名字和性格！只需使用以下ID：
+- "host1": 主持人1（女性）
+- "host2": 主持人2（男性）
 - "guest": 嘉宾
 - "news": 新闻播报
+
+请在节目开头通过台词自然地介绍主持人，如："大家好，我是xxx，今晚和我一起的是xxx..."
 
 ### mood (情绪)
 - "cheerful": 开朗
@@ -485,40 +789,16 @@ ${getVoiceListForPrompt()}
     }
 
     /**
-     * 默认时间线（备选） - 根据时段动态生成
+     * 默认时间线（备选） - 简单通用版本
      */
     private getDefaultTimeline(): ShowTimeline {
         const hour = new Date().getHours();
-        let title = '';
-        let greeting = '';
-        let speaker = 'host1';
-
-        if (hour >= 6 && hour < 9) {
-            title = '晨光电台';
-            greeting = '早安！新的一天开始了，让我们用音乐开启美好的早晨。';
-        } else if (hour >= 9 && hour < 12) {
-            title = '工作伴侣';
-            greeting = '工作时间到，让轻松的音乐陪伴你专注工作。';
-        } else if (hour >= 12 && hour < 14) {
-            title = '午间慢时光';
-            greeting = '午休时间，来段轻松的音乐放松一下吧。';
-        } else if (hour >= 14 && hour < 18) {
-            title = '下午茶电台';
-            greeting = '下午好，一杯咖啡，一首歌，享受惬意午后。';
-        } else if (hour >= 18 && hour < 21) {
-            title = '晚风电台';
-            greeting = '傍晚好，结束了一天的忙碌，让音乐温暖归家的路。';
-        } else if (hour >= 21 || hour < 2) {
-            title = '深夜电波';
-            greeting = '夜深了，让我们一起度过这段温暖的时光。';
-        } else {
-            title = '凌晨守夜人';
-            greeting = '夜还很长，让音乐陪伴每一个难眠的夜。';
-        }
+        const isNight = hour >= 21 || hour < 6;
+        const musicQuery = isNight ? 'lofi chill' : 'relaxing acoustic';
 
         return {
             id: `default-${Date.now()}`,
-            title,
+            title: '电台时光',
             estimatedDuration: 90,
             blocks: [
                 {
@@ -527,7 +807,7 @@ ${getVoiceListForPrompt()}
                     scripts: [
                         {
                             speaker: 'host1' as const,
-                            text: `欢迎收听${title}。${greeting}`,
+                            text: '欢迎收听，让我们用音乐陪伴这段时光。',
                             mood: 'warm'
                         }
                     ]
@@ -536,11 +816,11 @@ ${getVoiceListForPrompt()}
                     type: 'music',
                     id: 'default-music-1',
                     action: 'play',
-                    search: hour >= 21 || hour < 6 ? 'lofi chill sleep' : 'relaxing acoustic guitar',
+                    search: musicQuery,
                     duration: 60,
                     intro: {
                         speaker: 'host1',
-                        text: '在开始正式的节目之前，让我们先来听一段轻松的内容。',
+                        text: '先来听一段轻松的音乐。',
                         mood: 'warm'
                     }
                 }

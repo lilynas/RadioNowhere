@@ -21,6 +21,7 @@ import { radioMonitor } from '../radio_monitor';
 import { getSettings } from '../settings_store';
 import { saveSession } from '../session_store';
 import { mailQueue } from '../mail_queue';
+import { AUDIO } from '../constants';
 
 // ================== Types ==================
 
@@ -409,17 +410,29 @@ export class DirectorAgent {
      * 跳到指定段落
      */
     skipToBlock(index: number): void {
-        if (!this.context) return;
+        if (!this.context) {
+            console.log('[Director] skipToBlock: no context');
+            return;
+        }
 
         const { timeline } = this.context;
 
         if (index >= 0 && index < timeline.blocks.length) {
+            console.log('[Director] Skip requested to block:', index, 'current:', this.context.currentBlockIndex);
+
             // 设置跳转请求标志
             this.skipRequested = true;
             this.targetBlockIndex = index;
+
+            // 如果暂停中，自动恢复播放
+            if (this.context.isPaused) {
+                this.context.isPaused = false;
+                radioMonitor.log('DIRECTOR', 'Resuming from pause for skip', 'info');
+            }
+
             // 立即停止当前音频
             audioMixer.stopAll();
-            console.log('[Director] Skip requested to block:', index);
+            radioMonitor.log('DIRECTOR', `Jumping to block ${index}`, 'info');
         }
     }
 
@@ -724,6 +737,9 @@ export class DirectorAgent {
      * 执行说话块
      */
     private async executeTalkBlock(block: TalkBlock): Promise<void> {
+        // 保存当前音乐音量状态
+        const hadBackgroundMusic = block.backgroundMusic;
+
         // 处理背景音乐
         if (block.backgroundMusic) {
             const { action, volume } = block.backgroundMusic;
@@ -768,6 +784,12 @@ export class DirectorAgent {
         } else {
             // 单说话人模式：逐句播放
             await this.executeTalkBlockSingle(block);
+        }
+
+        // 恢复音乐音量（如果之前降低过）
+        if (hadBackgroundMusic && hadBackgroundMusic.action === 'fade') {
+            await audioMixer.fadeMusic(AUDIO.MUSIC_DEFAULT_VOLUME, AUDIO.FADE_DURATION_NORMAL);
+            radioMonitor.log('DIRECTOR', 'Restored music volume after talk', 'trace');
         }
     }
 
@@ -848,6 +870,7 @@ export class DirectorAgent {
             }
         }
         if (url && track) {
+            radioMonitor.log('DIRECTOR', `Playing music: ${track.name}`, 'info');
             await audioMixer.playMusic(url, {
                 fadeIn: block.fadeIn
             });
@@ -861,6 +884,8 @@ export class DirectorAgent {
                 await audioMixer.fadeMusic(0, 2000);
                 audioMixer.stopMusic();
             }
+        } else {
+            radioMonitor.log('DIRECTOR', `Music not found: ${block.search}`, 'warn');
         }
     }
 

@@ -5,6 +5,7 @@ import { Settings } from "lucide-react";
 import RadioPlayer from "@/components/RadioPlayer";
 import SettingsPanel from "@/components/SettingsPanel";
 import ApiCallBubbles from "@/components/ApiCallBubbles";
+import AgentMonitor from "@/components/AgentMonitor";
 
 export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -14,6 +15,9 @@ export default function Home() {
 
       {/* API Call Bubbles */}
       <ApiCallBubbles />
+
+      {/* Agent Monitor */}
+      <AgentMonitor />
 
       {/* Settings Button */}
       <button

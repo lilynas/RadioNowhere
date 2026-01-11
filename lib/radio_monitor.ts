@@ -37,6 +37,13 @@ export interface ApiCallEvent {
     details?: string;         // 额外信息
 }
 
+export interface AgentThought {
+    type: 'thinking' | 'tool_call' | 'tool_result' | 'output';
+    content: string;
+    toolName?: string;
+    timestamp: number;
+}
+
 // Event type mapping for type safety
 type MonitorEventMap = {
     status: AgentStatus;
@@ -44,6 +51,7 @@ type MonitorEventMap = {
     timeline: ShowTimeline;
     log: LogEvent;
     apiCall: ApiCallEvent;
+    thought: AgentThought;
 };
 
 type MonitorEventType = keyof MonitorEventMap;
@@ -106,6 +114,19 @@ class RadioMonitor {
             timestamp: Date.now()
         };
         this.emit('log', data);
+    }
+
+    /**
+     * 发出 Agent 思考/输出事件
+     */
+    emitThought(type: AgentThought['type'], content: string, toolName?: string): void {
+        const data: AgentThought = {
+            type,
+            content,
+            toolName,
+            timestamp: Date.now()
+        };
+        this.emit('thought', data);
     }
 
     /**

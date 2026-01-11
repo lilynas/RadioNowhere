@@ -23,7 +23,7 @@ const RETRY_DELAY_MS = 1000;
 // ================== Style Prompt Builder ==================
 
 /**
- * 角色详细配置（用于增强 TTS 提示词）
+ * 角色详细配置（通用模板，不绑定具体名字）
  */
 const CHARACTER_PROFILES: Record<string, {
     name: string;
@@ -33,18 +33,18 @@ const CHARACTER_PROFILES: Record<string, {
     scene: string;
 }> = {
     host1: {
-        name: '阿静',
-        role: '深夜电台女主持人',
-        personality: '温柔知性，声音清澈如月光，带着让人放松的治愈感',
-        accent: '标准普通话，略带南方口音的柔软',
-        scene: '午夜时分的电台直播间，柔和的灯光笼罩着操控台，窗外是城市的万家灯火'
+        name: '女主持人',
+        role: '电台女主持人',
+        personality: '温柔知性，声音清澈，带着让人放松的治愈感',
+        accent: '标准普通话，自然流畅',
+        scene: '电台直播间，柔和的灯光，轻松的氛围'
     },
     host2: {
-        name: '小北',
+        name: '男主持人',
         role: '电台男主持人',
         personality: '阳光开朗，声音有磁性，幽默风趣又不失专业',
-        accent: '北方普通话，清晰利落',
-        scene: '同一个深夜电台，与阿静搭档主持，气氛轻松愉快'
+        accent: '标准普通话，清晰利落',
+        scene: '电台直播间，与搭档主持，气氛轻松愉快'
     },
     guest: {
         name: '嘉宾',

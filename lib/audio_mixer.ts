@@ -4,6 +4,7 @@
  */
 
 import { Howl, Howler } from 'howler';
+import { AUDIO } from './constants';
 
 // ================== Types ==================
 
@@ -70,9 +71,9 @@ export class AudioMixer {
     private musicHowl: Howl | null = null;
     private voiceHowl: Howl | null = null;
 
-    private musicVolume = 0.9;  // 提高音乐音量
-    private voiceVolume = 1.0;
-    private masterVolume = 0.85;  // 稍微提高主音量
+    private musicVolume: number = AUDIO.MUSIC_DEFAULT_VOLUME;
+    private voiceVolume: number = AUDIO.VOICE_DEFAULT_VOLUME;
+    private masterVolume: number = AUDIO.MASTER_DEFAULT_VOLUME;
 
     private fadeInterval: NodeJS.Timeout | null = null;
 
@@ -83,9 +84,11 @@ export class AudioMixer {
     // ================== 音乐控制 ==================
 
     /**
-     * 播放音乐
+     * 播放音乐（带超时）
      */
     async playMusic(url: string, options?: { fadeIn?: number }): Promise<void> {
+        const LOAD_TIMEOUT = AUDIO.MUSIC_LOAD_TIMEOUT;
+
         return new Promise((resolve, reject) => {
             // 停止当前音乐
             if (this.musicHowl) {
@@ -93,20 +96,48 @@ export class AudioMixer {
             }
 
             const startVolume = options?.fadeIn ? 0 : this.musicVolume;
+            let timeoutId: NodeJS.Timeout | null = null;
+            let resolved = false;
+
+            const cleanup = () => {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
+            };
+
+            // 设置超时
+            timeoutId = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    console.warn('[AudioMixer] Music load timeout:', url);
+                    if (this.musicHowl) {
+                        this.musicHowl.unload();
+                        this.musicHowl = null;
+                    }
+                    resolve(); // 超时时也 resolve，让节目继续
+                }
+            }, LOAD_TIMEOUT);
 
             this.musicHowl = new Howl({
                 src: [url],
                 html5: true,
                 volume: startVolume,
                 onload: () => {
+                    if (resolved) return;
+                    resolved = true;
+                    cleanup();
                     if (options?.fadeIn) {
                         this.fadeMusic(this.musicVolume, options.fadeIn);
                     }
                     resolve();
                 },
                 onloaderror: (_, error) => {
-                    console.error('Music load error:', error);
-                    reject(error);
+                    if (resolved) return;
+                    resolved = true;
+                    cleanup();
+                    console.error('[AudioMixer] Music load error:', error, url);
+                    resolve(); // 错误时也 resolve，让节目继续
                 },
                 onend: () => {
                     // 音乐播放结束
