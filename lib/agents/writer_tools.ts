@@ -3,9 +3,9 @@
  * 提供音乐搜索、歌词获取、节目提交等工具
  */
 
-import { searchMusicWithValidation } from '../gdmusic_service';
+import { searchMusicWithValidation, getLyrics } from '../gdmusic_service';
 import { ShowTimeline } from '../types/radio_types';
-import { getRecentConcepts, getRecentSongs, isDuplicateConcept } from '../show_history';
+import { getRecentConcepts, getRecentSongs, isDuplicateConcept, recordSong } from '../show_history';
 import { NEWS_SERVICE } from '../constants';
 import { analyzeDiversity, addProhibitedArtist } from '../music_diversity';
 
@@ -90,7 +90,7 @@ export async function executeToolCall(
     try {
         switch (toolName) {
             case 'search_music':
-                return await executeSearchMusic(args.query as string, args.mood as string | undefined);
+                return await executeSearchMusic(args.query as string);
 
             case 'get_lyrics':
                 return await executeGetLyrics(args.song_title as string, args.lyric_id as string | undefined);
@@ -117,7 +117,7 @@ export async function executeToolCall(
 
 // ================== Tool Implementations ==================
 
-async function executeSearchMusic(query: string, mood?: string): Promise<ToolResult> {
+async function executeSearchMusic(query: string): Promise<ToolResult> {
     try {
         // 使用带验证的搜索，确保只返回可播放的歌曲
         const validatedTracks = await searchMusicWithValidation(query, 8); // 增加搜索数量

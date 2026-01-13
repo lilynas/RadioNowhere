@@ -164,6 +164,7 @@ export async function callGenerativeAI(options: GenerativeAIOptions): Promise<st
 
     let url: string;
     let body: unknown;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
     if (settings.apiType === 'vertexai') {
         // Vertex AI 格式
