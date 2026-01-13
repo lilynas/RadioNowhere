@@ -640,8 +640,6 @@ ${getVoiceListForPrompt()}
             : '';
 
         // 动态生成 speaker 示例
-        const speakerExample = this.currentCast?.members[0]?.roleId || 'host1';
-
         let prompt = `${getRadioSetting()}
 
 ${timeContext}
@@ -772,9 +770,9 @@ ${getVoiceListForPrompt()}
 
         let url: string;
         let body: unknown;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
         if (settings.apiType === 'vertexai') {
-            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
             // Vertex AI 格式
             const isGcpApiKey = settings.apiKey.startsWith('AIza');
             url = `https://${settings.gcpLocation}-aiplatform.googleapis.com/v1/projects/${settings.gcpProject}/locations/${settings.gcpLocation}/publishers/google/models/${settings.modelName}:generateContent`;
@@ -890,7 +888,7 @@ ${getVoiceListForPrompt()}
                         .replace(/\\\\/g, '\\');
                     jsonStr = unescaped;
                     console.log('[Writer] Successfully extracted and unescaped timeline_json');
-                } catch (e) {
+                } catch {
                     console.warn('[Writer] Failed to unescape timeline_json, trying alternative method');
                 }
             }

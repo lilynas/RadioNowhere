@@ -53,12 +53,14 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     useEffect(() => {
         if (isOpen) {
             const stored = getSettings();
-            setSettings(stored);
-            setTestStatus("idle");
-            setTestMessage("");
-            setSaved(false);
-            setModels([]);
-            setShowModelDropdown(false);
+            setTimeout(() => {
+                setSettings(stored);
+                setTestStatus("idle");
+                setTestMessage("");
+                setSaved(false);
+                setModels([]);
+                setShowModelDropdown(false);
+            }, 0);
         }
     }, [isOpen]);
 
@@ -74,7 +76,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         if (modelList.length > 0) {
             setShowModelDropdown(true);
         }
-    }, [settings.endpoint, settings.apiKey]);
+    }, [settings.endpoint, settings.apiKey, settings.apiType]);
 
     const handleSave = () => {
         saveSettings(settings);
