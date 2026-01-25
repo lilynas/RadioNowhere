@@ -18,6 +18,7 @@ import {
     getToolsDescription
 } from './writer-tools';
 import { getProhibitedArtists } from '@features/music-search/lib/diversity-manager';
+import { parseResponse as parseTimelineResponse } from './response-parser';
 
 // ================== Constants ==================
 
@@ -848,123 +849,10 @@ ${getVoiceListForPrompt()}
     }
 
     /**
-     * 解析 AI 响应
+     * 解析 AI 响应 - 委托给 response-parser 模块
      */
     private parseResponse(response: string): ShowTimeline {
-        // 提取 JSON 内容
-        let jsonStr = response;
-
-        // 策略1: 移除 markdown 代码块（支持完整和截断的情况）
-        const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)(?:```|$)/);
-        if (jsonMatch && jsonMatch[1].includes('{')) {
-            jsonStr = jsonMatch[1];
-            console.log('[Writer] Extracted JSON from markdown code block');
-        }
-
-        // 策略2: 查找第一个 { 和最后一个 }（通用回退）
-        const firstBrace = jsonStr.indexOf('{');
-        const lastBrace = jsonStr.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
-            console.log('[Writer] Extracted JSON by finding braces');
-        } else {
-            console.error('[Writer] No JSON structure found in response:', response.substring(0, 200));
-            throw new Error('No valid JSON structure found in AI response');
-        }
-
-        // 策略3: 检测 tool call 格式并提前提取 timeline_json
-        // 匹配 {"tool": "submit_show", "args": {"timeline_json": "..."}}
-        if (jsonStr.includes('"tool"') && jsonStr.includes('"submit_show"') && jsonStr.includes('timeline_json')) {
-            console.log('[Writer] Detected tool call format, extracting timeline_json early');
-
-            // 提取 timeline_json 的值（转义字符串）
-            const timelineMatch = jsonStr.match(/"timeline_json"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/)
-            if (timelineMatch && timelineMatch[1]) {
-                // 解码转义的 JSON 字符串
-                try {
-                    const unescaped = timelineMatch[1]
-                        .replace(/\\"/g, '"')
-                        .replace(/\\n/g, '\n')
-                        .replace(/\\t/g, '\t')
-                        .replace(/\\\\/g, '\\');
-                    jsonStr = unescaped;
-                    console.log('[Writer] Successfully extracted and unescaped timeline_json');
-                } catch {
-                    console.warn('[Writer] Failed to unescape timeline_json, trying alternative method');
-                }
-            }
-        }
-
-        // 尝试解析
-        let parsed;
-        try {
-            parsed = JSON.parse(jsonStr.trim());
-        } catch (parseError) {
-            // 尝试修复常见的 JSON 问题
-            try {
-                // 移除可能的尾随逗号
-                const fixedJson = jsonStr
-                    .replace(/,\s*}/g, '}')
-                    .replace(/,\s*\]/g, ']');
-                parsed = JSON.parse(fixedJson.trim());
-                console.log('[Writer] JSON parse succeeded after fixing trailing commas');
-            } catch {
-                console.error('[Writer] JSON parse failed. First 500 chars:', jsonStr.substring(0, 500));
-                throw parseError;
-            }
-        }
-
-        // 策略3: 处理 tool call 格式 {"tool": "submit_show", "args": {"timeline_json": "..."}}
-        if (parsed.tool === 'submit_show' && parsed.args?.timeline_json) {
-            console.log('[Writer] Detected tool call format, extracting timeline_json');
-            const timelineJson = parsed.args.timeline_json;
-
-            // 可能是字符串，需要再次解析
-            if (typeof timelineJson === 'string') {
-                try {
-                    parsed = JSON.parse(timelineJson);
-                    console.log('[Writer] Successfully parsed nested timeline_json');
-                } catch {
-                    // 尝试移除多余的转义
-                    try {
-                        const unescaped = timelineJson
-                            .replace(/\\"/g, '"')
-                            .replace(/\\n/g, '\n')
-                            .replace(/\\\\/g, '\\');
-                        parsed = JSON.parse(unescaped);
-                        console.log('[Writer] Successfully parsed unescaped timeline_json');
-                    } catch (e2) {
-                        console.error('[Writer] Failed to parse nested timeline_json:', e2);
-                        throw new Error('Failed to parse nested timeline_json');
-                    }
-                }
-            } else {
-                // 已经是对象
-                parsed = timelineJson;
-            }
-        }
-
-        // 验证结构
-        if (!parsed.blocks || !Array.isArray(parsed.blocks)) {
-            console.error('[Writer] Invalid structure:', Object.keys(parsed));
-            throw new Error('Invalid timeline structure: missing blocks array');
-        }
-
-        if (parsed.blocks.length === 0) {
-            console.error('[Writer] Empty blocks array');
-            throw new Error('Invalid timeline: blocks array is empty');
-        }
-
-        // 生成缺失的 ID
-        parsed.id = parsed.id || `timeline-${Date.now()}`;
-        parsed.blocks.forEach((block: TimelineBlock, index: number) => {
-            if (!block.id) {
-                block.id = `block-${index}`;
-            }
-        });
-
-        console.log('[Writer] Parse successful:', parsed.blocks.length, 'blocks');
-        return parsed as ShowTimeline;
+        return parseTimelineResponse(response);
     }
 
     /**
