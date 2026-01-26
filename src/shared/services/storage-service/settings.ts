@@ -35,6 +35,8 @@ export interface IApiSettings {
 
     // 播放配置
     preloadBlockCount: number;  // 提前准备的 block 数量 (推荐: 5)
+    maxMusicDuration: number;   // 音乐最大播放时长 (秒)
+    musicPlaybackMode: 'full' | 'truncated'; // 播放模式
 }
 
 export const DEFAULT_SETTINGS: IApiSettings = {
@@ -60,6 +62,8 @@ export const DEFAULT_SETTINGS: IApiSettings = {
     msTtsAuthKey: "",
     // 播放配置
     preloadBlockCount: 3,
+    maxMusicDuration: 60,
+    musicPlaybackMode: 'truncated',
 };
 
 // 可用的 TTS 语音列表
@@ -112,6 +116,8 @@ export function getSettings(): IApiSettings {
             msTtsAuthKey: parsed.msTtsAuthKey ?? DEFAULT_SETTINGS.msTtsAuthKey,
             // 播放配置
             preloadBlockCount: parsed.preloadBlockCount ?? DEFAULT_SETTINGS.preloadBlockCount,
+            maxMusicDuration: parsed.maxMusicDuration ?? DEFAULT_SETTINGS.maxMusicDuration,
+            musicPlaybackMode: parsed.musicPlaybackMode ?? DEFAULT_SETTINGS.musicPlaybackMode,
         };
     } catch (e) {
         console.error("Failed to parse settings:", e);

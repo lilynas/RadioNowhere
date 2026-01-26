@@ -32,3 +32,16 @@ export default function PlayerActionBtn({
         </button>
     );
 }
+
+// Additional News Button Component
+export function NewsActionBtn({ onClick }: { onClick: () => void }) {
+    return (
+        <button
+            onClick={onClick}
+            className="absolute top-4 right-4 z-40 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 rounded-full px-3 py-1 flex items-center gap-2 transition-all backdrop-blur-md group"
+        >
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[10px] font-bold uppercase tracking-wider group-hover:tracking-widest transition-all">Live News</span>
+        </button>
+    );
+}

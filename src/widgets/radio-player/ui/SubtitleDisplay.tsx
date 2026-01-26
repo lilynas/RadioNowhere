@@ -136,30 +136,39 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
 
             const fetchCover = async () => {
                 try {
-                    // 1. Search for the track
+                    // 1. Search for the track to get IDs (pic_id, lyric_id)
                     const searchRes = await fetch(`https://music-api.gdstudio.xyz/api.php?types=search&source=netease&name=${encodeURIComponent(trackName)}&count=1&pages=1`);
                     const searchData = await searchRes.json();
 
                     if (searchData && searchData.length > 0) {
-                        const picId = searchData[0].pic_id;
+                        const trackInfo = searchData[0];
+                        
+                        // Set Cover
+                        const picId = trackInfo.pic_id;
                         if (picId) {
-                            // 2. Construct picture URL
-                            // Note: The API likely returns a direct image stream or redirects to it.
-                            // However, based on typical usage, we might need to fetch the URL or just use it as src.
-                            // Let's assume we can use the API url directly as image source if it returns image data,
-                            // OR if it returns JSON with url, we handle that.
-                            // But usually "types=pic" might redirect. Let's try constructing the URL.
                             const artUrl = `https://music-api.gdstudio.xyz/api.php?types=pic&source=netease&id=${picId}&size=500`;
                             setCoverUrl(artUrl);
                         } else {
                             setCoverUrl("/default_cover.png");
                         }
+                        
+                        // Fetch Lyrics if lyric_id exists
+                        const lyricId = trackInfo.lyric_id;
+                        if (lyricId) {
+                            const lyricRes = await fetch(`https://music-api.gdstudio.xyz/api.php?types=lyric&source=netease&id=${lyricId}`);
+                            const lyricData = await lyricRes.json();
+                            if (lyricData.lyric) {
+                                setLyricsText(lyricData.lyric);
+                            }
+                        }
                     } else {
                         setCoverUrl("/default_cover.png");
+                        setLyricsText("");
                     }
                 } catch (err) {
-                    console.error("Failed to fetch cover art:", err);
+                    console.error("Failed to fetch cover art/lyrics:", err);
                     setCoverUrl("/default_cover.png");
+                    setLyricsText("");
                 }
             };
 
@@ -167,13 +176,34 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
         } else if (displayInfo.type !== 'music') {
             // Reset to default for non-music
             setCoverUrl("/default_cover.png");
+            setLyricsText("");
             lastFetchedTrack.current = "";
         }
     }, [displayInfo.type, displayInfo.displayName]);
 
+    // Lyrics state
+    const [showLyricsOverlay, setShowLyricsOverlay] = useState(false);
+    const [lyricsText, setLyricsText] = useState("");
+
+    // Parse lyrics to simple text array
+    const parsedLyrics = React.useMemo(() => {
+        if (!lyricsText) return [];
+        return lyricsText
+            .split('\n')
+            .map(line => line.replace(/\[\d{2}:\d{2}(\.\d+)?\]/g, '').trim())
+            .filter(line => line.length > 0);
+    }, [lyricsText]);
+
     // Default Cover Art Component (Generated Fluid Art)
     const DefaultCover = () => (
-        <div className="w-48 h-48 md:w-56 md:h-56 rounded-[24px] overflow-hidden relative shadow-2xl shadow-black/50 group mx-auto">
+        <div 
+            className="w-48 h-48 md:w-56 md:h-56 rounded-[24px] overflow-hidden relative shadow-2xl shadow-black/50 group mx-auto cursor-pointer"
+            onClick={() => {
+                if (lyricsText) {
+                    setShowLyricsOverlay(true);
+                }
+            }}
+        >
             {/* Using the dynamic cover url */}
             <img
                 src={coverUrl}
@@ -187,7 +217,13 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
 
             {/* Overlay for music state */}
             {displayInfo.type === 'music' && (
-                <div className="absolute inset-0 bg-black/20" />
+                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                    {lyricsText && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white/80 text-xs font-medium tracking-widest uppercase border border-white/30 px-3 py-1 rounded-full backdrop-blur-sm">
+                            Show Lyrics
+                        </div>
+                    )}
+                </div>
             )}
         </div>
     );
@@ -231,6 +267,51 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
                             </div>
                         </motion.div>
                     )}
+
+                    {/* Lyrics Overlay Modal */}
+                    <AnimatePresence>
+                        {showLyricsOverlay && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 50 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 50 }}
+                                className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl rounded-[24px] overflow-hidden flex flex-col"
+                            >
+                                {/* Header */}
+                                <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-neutral-900/50">
+                                    <div className="flex flex-col">
+                                        <h3 className="text-white font-bold text-lg leading-tight line-clamp-1">{displayInfo.displayName}</h3>
+                                        <span className="text-neutral-400 text-xs">{displayInfo.subtitle}</span>
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowLyricsOverlay(false)}
+                                        className="p-2 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                                    >
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M18 6L6 18M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                {/* Lyrics Content */}
+                                <div className="flex-1 overflow-y-auto p-6 space-y-6 text-center">
+                                    {parsedLyrics.length > 0 ? (
+                                        parsedLyrics.map((line, i) => (
+                                            <p key={i} className="text-neutral-300 text-lg font-light leading-relaxed">
+                                                {line}
+                                            </p>
+                                        ))
+                                    ) : (
+                                        <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-4">
+                                            <Music size={48} className="opacity-20" />
+                                            <p>No lyrics available</p>
+                                        </div>
+                                    )}
+                                    <div className="h-12" /> {/* Bottom padding */}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                     {/* Layout for Music/Idle Mode: Title -> Status */}
                     {(displayInfo.type === 'music' || displayInfo.type === 'idle') && (

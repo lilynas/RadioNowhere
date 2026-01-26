@@ -159,12 +159,18 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
         }
     }, [timeline]);
 
-    const submitUserRequest = useCallback(() => {
-        if (!userMessage.trim()) return;
-        mailQueue.push(userMessage);
+    const submitUserRequest = useCallback((content?: string) => {
+        const msgToSend = content || userMessage;
+        if (!msgToSend.trim()) return;
+        
+        mailQueue.push(msgToSend);
         setPendingMailCount(mailQueue.getStatus().pending);
-        setUserMessage("");
-        setShowMailbox(false);
+        
+        // Only clear state if we sent the state's message
+        if (!content) {
+            setUserMessage("");
+            setShowMailbox(false);
+        }
     }, [userMessage]);
 
     const clearHistory = useCallback(() => {

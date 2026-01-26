@@ -8,12 +8,14 @@ import {
 } from 'lucide-react';
 
 import { useRadioPlayer } from './hooks/useRadioPlayer';
+import { directorAgent } from '@features/agents/lib/director-agent';
 import {
     AgentConsole,
     SubtitleDisplay,
     PlayerActionBtn,
     TimelinePanel,
     MailboxDrawer,
+    NewsActionBtn
 } from './ui';
 
 export default function RadioPlayer() {
@@ -54,6 +56,19 @@ export default function RadioPlayer() {
 
             {/* Main Card Container */}
             <div className="w-full relative min-h-[380px] glass-panel rounded-[24px] overflow-hidden flex flex-col shadow-2xl">
+
+                {/* News Flash Button */}
+                <NewsActionBtn onClick={() => {
+                    // Inject a high-priority news block
+                    // Since we don't have direct access to directorAgent methods in this scope, we can use the hook or export/import
+                    // We imported directorAgent directly.
+                    // However, it's cleaner to expose this via useRadioPlayer.
+                    // For now, let's use the direct import as a quick action.
+                    
+                    // We need to trigger "fetch_news" tool or just insert a prompt?
+                    // The best way is to queue a user request "播报即时新闻" which will trigger the Writer Agent.
+                    submitUserRequest("请插播一条最新的即时新闻快讯");
+                }} />
 
                 {/* 1. Top Bar / Dynamic Island - REMOVED */}
                 {/* <div className="absolute top-6 left-0 right-0 z-30 flex justify-center">
