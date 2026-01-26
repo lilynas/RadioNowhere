@@ -229,6 +229,9 @@ export async function executeMusicBlock(
                     await audioMixer.fadeMusic(0, 2000);
                     audioMixer.stopMusic();
                     audioMixer.setMusicVolume(AUDIO.MUSIC_DEFAULT_VOLUME);
+                } else {
+                    radioMonitor.log('DIRECTOR', `Waiting for music to end (auto)...`, 'info');
+                    await audioMixer.waitForMusicEnd();
                 }
                 return;
             }
@@ -300,6 +303,9 @@ export async function executeMusicBlock(
             await audioMixer.fadeMusic(0, 2000);
             audioMixer.stopMusic();
             audioMixer.setMusicVolume(AUDIO.MUSIC_DEFAULT_VOLUME);
+        } else {
+            radioMonitor.log('DIRECTOR', `Waiting for music to end (auto)...`, 'info');
+            await audioMixer.waitForMusicEnd();
         }
     } catch (err) {
         radioMonitor.log('DIRECTOR', `executeMusicBlock error: ${err}`, 'error');

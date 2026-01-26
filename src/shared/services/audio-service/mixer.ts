@@ -81,6 +81,8 @@ export class AudioMixer {
     private wasMusicPlaying: boolean = false;
     private wasVoicePlaying: boolean = false;
 
+    private musicEndResolve: (() => void) | null = null;
+
     constructor() {
         Howler.volume(this.masterVolume);
     }
@@ -93,7 +95,7 @@ export class AudioMixer {
     async playMusic(
         url: string,
         options?: { fadeIn?: number; format?: string; html5?: boolean }
-    ): Promise<{ success: boolean; error?: string }> {
+    ): Promise<{ success: boolean; error?: string; duration?: number }> {
         const LOAD_TIMEOUT = AUDIO.MUSIC_LOAD_TIMEOUT;
 
         return new Promise((resolve) => {
@@ -101,6 +103,12 @@ export class AudioMixer {
             if (this.musicHowl) {
                 this.musicHowl.unload();
                 this.musicHowl = null;
+            }
+
+            // 清除之前的 resolve（如果有）- 防止永远挂起
+            if (this.musicEndResolve) {
+                this.musicEndResolve();
+                this.musicEndResolve = null;
             }
 
             const startVolume = options?.fadeIn ? 0 : this.musicVolume;
@@ -114,7 +122,7 @@ export class AudioMixer {
                 }
             };
 
-            const finish = (result: { success: boolean; error?: string }) => {
+            const finish = (result: { success: boolean; error?: string; duration?: number }) => {
                 if (resolved) return;
                 resolved = true;
                 cleanup();
@@ -150,7 +158,7 @@ export class AudioMixer {
                         console.error('[AudioMixer] Music play start error:', e, url);
                     }
 
-                    finish({ success: true });
+                    finish({ success: true, duration: this.musicHowl?.duration() });
                 },
                 onloaderror: (_, error) => {
                     console.error('[AudioMixer] Music load error:', error, url);
@@ -162,11 +170,29 @@ export class AudioMixer {
                 },
                 onend: () => {
                     // 音乐播放结束
+                    console.log('[AudioMixer] Music finished playing');
+                    if (this.musicEndResolve) {
+                        this.musicEndResolve();
+                        this.musicEndResolve = null;
+                    }
                 }
             });
 
             // 确保开始加载（并在 onload 中触发播放）
             this.musicHowl.load();
+        });
+    }
+
+    /**
+     * 等待当前音乐播放结束
+     */
+    async waitForMusicEnd(): Promise<void> {
+        if (!this.musicHowl || !this.musicHowl.playing()) {
+            return;
+        }
+
+        return new Promise((resolve) => {
+            this.musicEndResolve = resolve;
         });
     }
 
@@ -191,6 +217,11 @@ export class AudioMixer {
         this.musicHowl?.stop();
         this.musicHowl?.unload();
         this.musicHowl = null;
+        
+        if (this.musicEndResolve) {
+            this.musicEndResolve();
+            this.musicEndResolve = null;
+        }
     }
 
     /**
