@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.23",
     "@google/generative-ai": "^0.24.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.25.0",

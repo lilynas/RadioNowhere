@@ -27,7 +27,7 @@ export interface RadioPlayerActions {
     togglePlayback: () => Promise<void>;
     disconnect: () => void;
     jumpToBlock: (index: number) => void;
-    submitUserRequest: () => void;
+    submitUserRequest: (content?: string) => void;
     setShowMailbox: (show: boolean) => void;
     setShowTimeline: (show: boolean) => void;
     setUserMessage: (message: string) => void;

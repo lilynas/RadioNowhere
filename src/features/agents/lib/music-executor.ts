@@ -209,6 +209,79 @@ export async function executeMusicBlock(
             if (result.success) {
                 setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
 
+                // 发送带元数据的音乐播放事件
+                const track = state.musicCache.get(block.search);
+                const coverUrl = state.musicCoverCache.get(block.search) || null;
+                if (track) {
+                    radioMonitor.emitMusicScript(
+                        track.name,
+                        track.artist.join(', '),
+                        track.album,
+                        coverUrl,
+                        block.id
+                    );
+                }
+
+                await playIntroOverlay();
+                globalState.addTrack(block.search);
+
+                // Get settings for playback mode
+                const settings = getSettings();
+                const isFullPlayback = settings.musicPlaybackMode === 'full';
+
+                if (isFullPlayback) {
+                    radioMonitor.log('DIRECTOR', `Waiting for music to end (Full Playback Mode)...`, 'info');
+                    await audioMixer.waitForMusicEnd();
+                } else {
+                    // Truncated mode
+                    const durationToWait = block.duration || settings.maxMusicDuration || 60;
+                    
+                    await delay(durationToWait * 1000);
+                    await audioMixer.fadeMusic(0, 2000);
+                    audioMixer.stopMusic();
+                    audioMixer.setMusicVolume(AUDIO.MUSIC_DEFAULT_VOLUME);
+                }
+                return;
+            }
+
+            radioMonitor.log('DIRECTOR', `Cached music playback failed: ${block.search} - ${result.error}`, 'error');
+            URL.revokeObjectURL(blobUrl);
+            radioMonitor.log('DIRECTOR', `Fallback to live search: ${block.search}`, 'warn');
+        } else {
+            radioMonitor.log('DIRECTOR', `Music not cached, fallback to live search: ${block.search}`, 'warn');
+        }
+
+        // 3. 降级：实时搜索
+        let track = state.musicCache.get(block.search);
+        if (!track) {
+            radioMonitor.log('DIRECTOR', `Searching music (fallback): ${block.search}`, 'info');
+            const tracks = await searchMusic(block.search);
+            if (tracks.length === 0) {
+                radioMonitor.log('DIRECTOR', `Music not found: ${block.search}`, 'warn');
+                return;
+            }
+            track = tracks[0];
+            state.musicCache.set(block.search, track);
+        }
+
+        const url = await getMusicUrl(track.id, 320, track.source);
+        if (!url) {
+            radioMonitor.log('DIRECTOR', `Failed to get music URL (fallback): ${block.search}`, 'error');
+            return;
+        }
+
+        state.musicUrlCache.set(block.search, { url, cachedAt: Date.now() });
+        radioMonitor.log('DIRECTOR', `Playing music (live): ${track.name}`, 'info');
+
+        const playResult = await audioMixer.playMusic(url, {
+            fadeIn: block.fadeIn ?? AUDIO.MUSIC_DEFAULT_FADE_IN
+        });
+
+        if (!playResult.success) {
+            radioMonitor.log('DIRECTOR', `Live music playback failed: ${block.search} - ${playResult.error}`, 'error');
+            return;
+        }
+
         // 发送带元数据的音乐播放事件
         let coverUrl = state.musicCoverCache.get(block.search) || null;
         // 如果还没有封面，尝试获取
