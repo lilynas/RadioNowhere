@@ -223,7 +223,7 @@ async function executeFetchNews(count?: number): Promise<ToolResult> {
 
         const data = await response.json();
 
-        if (data.code !== 201 || !data.data?.news) {
+        if ((data.code !== 201 && data.code !== 200) || !data.data?.news) {
             return { success: false, error: '新闻API返回异常' };
         }
 

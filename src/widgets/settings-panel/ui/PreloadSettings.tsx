@@ -79,11 +79,7 @@ export default function PreloadSettings({
                             onChange={(e) => onSettingChange("maxMusicDuration", parseInt(e.target.value))}
                             className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                         />
-                        <div className="flex justify-between text-[10px] text-neutral-600">
-                            <span>30s</span>
-                            <span>60s</span>
-                            <span>180s</span>
-                        </div>
+
                     </div>
                 )}
             </div>
