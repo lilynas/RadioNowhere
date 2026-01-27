@@ -119,8 +119,8 @@ export class WriterAgent {
         radioMonitor.updateStatus('WRITER', 'BUSY', `ReAct Loop: ${selectedShowType}`);
         radioMonitor.log('WRITER', `Starting ReAct loop for ${selectedShowType}`);
 
-        // 2. 构建 ReAct 系统提示
-        const systemPrompt = this.buildReActSystemPrompt(duration, theme, userRequest);
+        // 2. 构建 ReAct 系统提示 - 传入选定的节目类型
+        const systemPrompt = this.buildReActSystemPrompt(duration, theme, userRequest, selectedShowType);
 
         // 3. 初始化对话历史
         this.conversationHistory = [];
@@ -278,7 +278,7 @@ export class WriterAgent {
     /**
      * 构建 ReAct 系统提示
      */
-    private buildReActSystemPrompt(duration: number, theme?: string, userRequest?: string): string {
+    private buildReActSystemPrompt(duration: number, theme?: string, userRequest?: string, selectedShowType?: ShowType): string {
         const historyContext = getHistoryContext();
         const toolsDesc = getToolsDescription();
 
@@ -288,7 +288,19 @@ export class WriterAgent {
             ? `## ⚠️ 禁止使用的歌手（近24小时已使用）\n${prohibitedArtists.map(a => `- ${a}`).join('\n')}\n\n**注意：如果你选择了这些歌手，会导致节目被拒绝！**\n\n`
             : '';
 
-        return `${getRadioSetting()}
+        // 获取演员阵容描述
+        const castDescription = this.currentCast
+            ? castDirector.getCastDescription(this.currentCast)
+            : '';
+
+        // 根据是否指定节目类型生成不同的提示
+        const showTypeInstruction = selectedShowType
+            ? this.getSpecificShowTypeInstruction(selectedShowType)
+            : getRadioSetting();
+
+        return `${showTypeInstruction}
+
+${castDescription}
 
 ${this.getTimeContext()}
 
@@ -629,6 +641,65 @@ ${getVoiceListForPrompt()}
 - 主持风格参考: ${hosts}
 
 请根据当前时段生成合适的节目内容和氛围。`;
+    }
+
+    /**
+     * 获取特定节目类型的指令
+     * 当用户选择了特定电台类型时，强制AI生成该类型内容
+     */
+    private getSpecificShowTypeInstruction(showType: ShowType): string {
+        const showTypeNames: Record<ShowType, { name: string; emoji: string; description: string }> = {
+            news: { name: '新闻时事', emoji: '📰', description: '播报新闻要点、深度分析时事热点、社会现象评论' },
+            talk: { name: '脱口秀', emoji: '💬', description: '两位主持人轻松聊天，分享生活趣事、热门话题、个人见解' },
+            history: { name: '历史风云', emoji: '📚', description: '讲述历史故事、人物传记、朝代兴衰，带听众穿越时空' },
+            science: { name: '科普百科', emoji: '🔬', description: '有趣的科学知识、自然奥秘、生活冷知识，深入浅出' },
+            mystery: { name: '奇闻异事', emoji: '👻', description: '都市传说、未解之谜、悬疑故事（营造悬疑氛围，但不要过于恐怖）' },
+            interview: { name: '访谈对话', emoji: '🎤', description: '模拟采访名人、专家或虚构人物，进行深度对话' },
+            nighttalk: { name: '深夜心声', emoji: '🌙', description: '情感话题、人生感悟、温暖治愈，适合静谧时刻倾听' },
+            music: { name: '音乐专题', emoji: '🎵', description: '介绍某个曲风、歌手或音乐背后的故事，以音乐鉴赏为主' },
+            entertainment: { name: '娱乐互动', emoji: '🎪', description: '有趣的话题讨论、游戏互动、轻松搞笑' },
+            gaming: { name: '游戏二次元', emoji: '🎮', description: '游戏资讯、动漫话题、ACG文化讨论' },
+            drama: { name: '广播剧', emoji: '🎭', description: '有声小说、广播剧，多角色演绎故事' },
+            story: { name: '故事电台', emoji: '📖', description: '讲故事、读信，娓娓道来的叙事节目' },
+        };
+
+        const info = showTypeNames[showType] || { name: showType, emoji: '📻', description: '' };
+
+        return `你是 **${RADIO.NAME} ${RADIO.FREQUENCY}** 网络电台的内容创作者。
+
+## 📻 电台身份
+- 电台名称：**${RADIO.NAME}** (${RADIO.SLOGAN})
+- 频率：**${RADIO.FREQUENCY}**
+- 可以在节目中自然地提及电台名称
+
+## 🎯 **本期节目类型：${info.emoji} ${info.name}**
+
+**⚠️ 重要：听众已选择收听「${info.name}」类型的节目，你必须严格按照这个类型来生成内容！**
+
+### 节目要求
+${info.description}
+
+### 内容比例要求
+- **对话/讲述内容**：占节目的 70-80%
+- **音乐穿插**：占节目的 20-30%，用于烘托氛围和过渡
+- 音乐是辅助，不是主体！节目的核心是「${info.name}」的内容
+
+### 🚫 禁止事项
+- ❌ 不要生成其他类型的节目
+- ❌ 不要把节目变成纯音乐节目
+- ❌ 不要偏离「${info.name}」的主题
+
+### ✅ 必须做到
+- ✅ 节目主题必须是「${info.name}」相关
+- ✅ 主持人对话/讲述内容要丰富、有深度
+- ✅ 每个 talk 块至少要有 5-10 句有实质内容的台词
+- ✅ 音乐选择要符合节目氛围
+
+## 🚨 重要原则
+1. **内容为王**：对话和讲述才是节目核心，音乐只是点缀
+2. **深度展开**：挑一个具体话题深入讨论，不要泛泛而谈
+3. **真实感**：主持人要有真实的对话感，不要念稿子味
+`;
     }
 
     /**
