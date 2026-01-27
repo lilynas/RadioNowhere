@@ -19,7 +19,8 @@ export type ShowType =
     | 'science'        // 科普百科
     | 'mystery'        // 奇闻异事
     | 'nighttalk'      // 深夜心声
-    | 'music';         // 音乐专题
+    | 'music'          // 音乐专题
+    | 'gaming';        // 游戏二次元
 
 /** 角色定义 */
 export interface RoleDefinition {
@@ -325,6 +326,32 @@ export const SHOW_TEMPLATES: ShowTemplate[] = [
                 name: '音乐人',
                 voiceTraits: { gender: 'female', style: ['artistic', 'thoughtful'] },
                 personality: '分享创作故事和音乐见解'
+            }
+        ]
+    },
+    {
+        type: 'gaming',
+        name: '游戏二次元',
+        description: '游戏资讯、动漫话题、ACG文化讨论',
+        castSize: [2, 3],
+        roles: [
+            {
+                id: 'host1',
+                name: '主播A',
+                voiceTraits: { gender: 'female', style: ['energetic', 'youthful', 'enthusiastic'] },
+                personality: '活力满满的游戏玩家，熟悉各种游戏和动漫'
+            },
+            {
+                id: 'host2',
+                name: '主播B',
+                voiceTraits: { gender: 'male', style: ['casual', 'friendly', 'knowledgeable'] },
+                personality: '资深ACG爱好者，对二次元文化了如指掌'
+            },
+            {
+                id: 'guest',
+                name: '嘉宾',
+                voiceTraits: { gender: 'neutral', style: ['upbeat', 'playful'] },
+                personality: '分享游戏攻略和ACG趣闻'
             }
         ]
     }
