@@ -15,6 +15,7 @@ import {
     PlayerState
 } from '@shared/types/radio-core';
 import { writerAgent } from '@features/content/lib/writer-agent';
+import { ShowType } from '@features/content/lib/cast-system';
 import { ttsAgent } from '@features/tts/lib/tts-agent';
 import { audioMixer } from '@shared/services/audio-service/mixer';
 import { searchMusic, getMusicUrl, IGDMusicTrack } from '@features/music-search/lib/gd-music-service';
@@ -52,6 +53,7 @@ export class DirectorAgent {
     async startShow(options?: {
         theme?: string;
         userRequest?: string;
+        stationType?: ShowType;
         onStateChange?: (state: PlayerState) => void;
         onBlockStart?: (block: TimelineBlock, index: number) => void;
         onBlockEnd?: (block: TimelineBlock) => void;
@@ -82,7 +84,7 @@ export class DirectorAgent {
         }
 
         timeAnnouncementService.start();
-        await this.runShowLoop(options?.theme, options?.userRequest, sessionId);
+        await this.runShowLoop(options?.theme, options?.userRequest, sessionId, options?.stationType);
     }
 
     /**
@@ -174,8 +176,8 @@ export class DirectorAgent {
     /**
      * 内部主运行循环
      */
-    private async runShowLoop(theme?: string, userRequest?: string, sessionId?: number): Promise<void> {
-        console.log('[Director] Entering show loop... (session:', sessionId, ')');
+    private async runShowLoop(theme?: string, userRequest?: string, sessionId?: number, stationType?: ShowType): Promise<void> {
+        console.log('[Director] Entering show loop... (session:', sessionId, ', stationType:', stationType, ')');
         radioMonitor.updateStatus('DIRECTOR', 'READY', 'Ready to start loop');
 
         let nextTimeline: ShowTimeline | null = null;
@@ -192,7 +194,7 @@ export class DirectorAgent {
                     isFirstRun = false;
 
                     WarmupContent.playWarmupContent(() => this.searchAndPlayIntroMusic());
-                    const timelinePromise = this.generateMainTimeline(theme, userRequest);
+                    const timelinePromise = this.generateMainTimeline(theme, userRequest, stationType);
 
                     currentTimeline = await timelinePromise;
                     await this.setupTimeline(currentTimeline);
@@ -245,7 +247,7 @@ export class DirectorAgent {
                     this.state.preparedAudio.clear();
 
                     const pendingMail = mailQueue.getNext();
-                    currentTimeline = await this.generateMainTimeline(undefined, pendingMail?.content);
+                    currentTimeline = await this.generateMainTimeline(undefined, pendingMail?.content, stationType);
 
                     await this.setupTimeline(currentTimeline);
                     radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Preparing audio...');
@@ -267,7 +269,7 @@ export class DirectorAgent {
 
                     radioMonitor.log('DIRECTOR', 'Pre-generating next timeline...', 'info');
                     const pendingMail = mailQueue.getNext();
-                    nextTimeline = await this.generateMainTimeline(undefined, pendingMail?.content);
+                    nextTimeline = await this.generateMainTimeline(undefined, pendingMail?.content, stationType);
 
                     if (!this.state.isRunning || !isValidSession() || !nextTimeline) return;
 
@@ -293,11 +295,11 @@ export class DirectorAgent {
         console.log('[Director] Show loop ended.');
     }
 
-    private async generateMainTimeline(theme?: string, userRequest?: string): Promise<ShowTimeline> {
+    private async generateMainTimeline(theme?: string, userRequest?: string, stationType?: ShowType): Promise<ShowTimeline> {
         const duration = SHOW.MAIN_DURATION;
-        console.log(`[Director] Generating new timeline (${duration}s)...`);
+        console.log(`[Director] Generating new timeline (${duration}s, stationType: ${stationType})...`);
         radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Generating timeline...');
-        return writerAgent.generateTimeline(duration, theme, userRequest);
+        return writerAgent.generateTimeline(duration, theme, userRequest, stationType);
     }
 
     private async setupTimeline(timeline: ShowTimeline, broadcast: boolean = true): Promise<void> {

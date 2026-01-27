@@ -4,7 +4,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import {
     Play, Pause, MessageCircle,
-    Volume2, VolumeX, Layers, Loader2, RotateCcw,
+    Volume2, VolumeX, Layers, Loader2, RotateCcw, Radio,
 } from 'lucide-react';
 
 import { useRadioPlayer } from './hooks/useRadioPlayer';
@@ -14,7 +14,7 @@ import {
     PlayerActionBtn,
     TimelinePanel,
     MailboxDrawer,
-    NewsActionBtn
+    StationSelector
 } from './ui';
 
 export default function RadioPlayer() {
@@ -33,6 +33,8 @@ export default function RadioPlayer() {
         userMessage,
         showTimeline,
         pendingMailCount,
+        selectedStation,
+        showStationSelector,
         // Actions
         togglePlayback,
         disconnect,
@@ -43,6 +45,8 @@ export default function RadioPlayer() {
         setUserMessage,
         setIsMuted,
         clearHistory,
+        setSelectedStation,
+        setShowStationSelector,
         // Refs
         timelineScrollRef,
     } = useRadioPlayer();
@@ -55,12 +59,6 @@ export default function RadioPlayer() {
 
             {/* Main Card Container */}
             <div className="w-full relative min-h-[380px] glass-panel rounded-[24px] overflow-hidden flex flex-col shadow-2xl">
-
-                {/* News Flash Button */}
-                <NewsActionBtn onClick={() => {
-                    // Queue a user request to trigger the Writer Agent to insert a news flash
-                    submitUserRequest("请插播一条最新的即时新闻快讯");
-                }} />
 
                 {/* 1. Top Bar / Dynamic Island - REMOVED */}
                 {/* <div className="absolute top-6 left-0 right-0 z-30 flex justify-center">
@@ -136,6 +134,12 @@ export default function RadioPlayer() {
                                 label="Queue"
                             />
 
+                            <PlayerActionBtn
+                                onClick={() => setShowStationSelector(true)}
+                                icon={<Radio size={20} />}
+                                label="Station"
+                            />
+
                             <div className="relative">
                                 <PlayerActionBtn
                                     onClick={() => setShowMailbox(true)}
@@ -186,6 +190,13 @@ export default function RadioPlayer() {
                 onUserMessageChange={setUserMessage}
                 onSubmit={submitUserRequest}
                 onClose={() => setShowMailbox(false)}
+            />
+
+            <StationSelector
+                isOpen={showStationSelector}
+                currentStation={selectedStation}
+                onSelect={setSelectedStation}
+                onClose={() => setShowStationSelector(false)}
             />
         </div >
     );

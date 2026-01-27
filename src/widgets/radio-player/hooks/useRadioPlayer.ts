@@ -7,6 +7,7 @@ import { radioMonitor, AgentStatus, ScriptEvent, LogEvent } from '@shared/servic
 import { ShowTimeline } from '@shared/types/radio-core';
 import { mailQueue } from '@features/feedback/lib/mail-queue';
 import { ExtendedBlock, RadioPlayerState, RadioPlayerActions } from '../types';
+import { ShowType } from '@features/content/lib/cast-system';
 
 export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
     timelineScrollRef: React.RefObject<HTMLDivElement | null>;
@@ -26,6 +27,8 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
     const [userMessage, setUserMessage] = useState("");
     const [showTimeline, setShowTimeline] = useState(true);
     const [pendingMailCount, setPendingMailCount] = useState(0);
+    const [selectedStation, setSelectedStation] = useState<ShowType | 'random'>('random');
+    const [showStationSelector, setShowStationSelector] = useState(false);
 
     // 连接状态
     const [isConnected, setIsConnected] = useState(false);
@@ -108,7 +111,9 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
                 try {
                     // Safety timeout: force stop initializing after 3s if agent hangs
                     setTimeout(() => setIsInitializing(false), 3000);
-                    await directorAgent.startShow({});
+                    await directorAgent.startShow({
+                        stationType: selectedStation === 'random' ? undefined : selectedStation
+                    });
                 } catch (error) {
                     console.error("Failed to start:", error);
                     setIsConnected(false);
@@ -120,7 +125,7 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
                 setIsPlaying(true);
             }
         }
-    }, [isPlaying, isConnected]);
+    }, [isPlaying, isConnected, selectedStation]);
 
     // 断开连接
     const disconnect = useCallback(() => {
@@ -197,6 +202,8 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
         userMessage,
         showTimeline,
         pendingMailCount,
+        selectedStation,
+        showStationSelector,
         // Actions
         togglePlayback,
         disconnect,
@@ -207,6 +214,8 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
         setUserMessage,
         setIsMuted: handleSetIsMuted,
         clearHistory,
+        setSelectedStation,
+        setShowStationSelector,
         // Refs
         timelineScrollRef,
     };
