@@ -121,6 +121,7 @@ export interface ShowTimeline {
     theme?: string;          // 节目主题
     mood?: MoodType;         // 整体氛围
     userRequest?: string;    // 用户投稿内容
+    stationType?: string;    // 用户选择的电台类型 (ShowType or 'random')
   };
 }
 

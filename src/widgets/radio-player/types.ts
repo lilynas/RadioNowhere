@@ -1,5 +1,6 @@
 import { TimelineBlock, PlayerState } from '@shared/types/radio-core';
 import { AgentStatus, ScriptEvent, LogEvent } from '@shared/services/monitor-service';
+import { ShowType } from '@features/content/lib/cast-system';
 
 // Extended TimelineBlock with history marker
 export type ExtendedBlock = TimelineBlock & {
@@ -21,6 +22,8 @@ export interface RadioPlayerState {
     userMessage: string;
     showTimeline: boolean;
     pendingMailCount: number;
+    selectedStation: ShowType | 'random';
+    showStationSelector: boolean;
 }
 
 export interface RadioPlayerActions {
@@ -33,4 +36,6 @@ export interface RadioPlayerActions {
     setUserMessage: (message: string) => void;
     setIsMuted: (muted: boolean) => void;
     clearHistory: () => void;
+    setSelectedStation: (station: ShowType | 'random') => void;
+    setShowStationSelector: (show: boolean) => void;
 }
