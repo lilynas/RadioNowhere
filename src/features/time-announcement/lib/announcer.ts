@@ -38,10 +38,7 @@ class TimeAnnouncementService {
         isPreparing: false
     };
 
-    private pausedState: {
-        wasMusicPlaying: boolean;
-        wasVoicePlaying: boolean;
-    } | null = null;
+
 
     /**
      * 启动报时服务
@@ -183,11 +180,9 @@ class TimeAnnouncementService {
 
         radioMonitor.log('DIRECTOR', 'Playing time announcement', 'info');
 
-        // 1. 暂停当前音频
-        this.pausedState = {
-            wasMusicPlaying: audioMixer.getState().music.isPlaying,
-            wasVoicePlaying: audioMixer.getState().voice.isPlaying
-        };
+        // 1. 暂停当前音频（pauseAll 内部会记录哪些音轨正在播放）
+        //    在暂停前记录音乐是否在播放，用于决定是否需要渐入效果
+        const wasMusicPlaying = audioMixer.getState().music.isPlaying;
         audioMixer.pauseAll();
 
         try {
@@ -204,15 +199,20 @@ class TimeAnnouncementService {
             radioMonitor.log('DIRECTOR', `Time announcement error: ${error}`, 'error');
         }
 
-        // 5. 恢复原音频（渐入效果）
-        if (this.pausedState?.wasMusicPlaying) {
-            // 先将音量设为 0，再恢复播放，然后渐入
+        // 5. 恢复原音频
+        //    如果音乐之前在播放，使用渐入效果恢复
+        if (wasMusicPlaying) {
+            // 先将音量设为 0，恢复后再渐入
             audioMixer.setMusicVolume(0);
-            audioMixer.resumeMusic();
-            // 渐入到正常音量（1 秒）
+        }
+        
+        // 使用 resumeAll 恢复所有之前暂停的音轨，并正确重置内部状态标志
+        audioMixer.resumeAll();
+        
+        // 如果音乐之前在播放，渐入到正常音量
+        if (wasMusicPlaying) {
             await audioMixer.fadeMusic(0.8, 1000);
         }
-        this.pausedState = null;
 
         // 6. 重置状态，计算下一次报时
         this.state.preparedAudio = null;
