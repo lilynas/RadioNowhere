@@ -285,11 +285,24 @@ function executeSubmitShow(
                 recordSong(block.search);
 
                 // 从搜索词中提取歌手名并添加到禁止列表
+                // 只在明确的 "歌手 - 歌名" 格式时提取第一部分作为歌手
+                // 注意：实际歌手信息会在 music-executor 播放时从音乐元数据中提取
                 const parts = block.search.split(' - ');
                 if (parts.length === 2) {
-                    const artistName = parts[0].trim();
-                    addProhibitedArtist(artistName);
+                    const artistPart = parts[0].trim();
+                    // 处理多歌手情况（如 "周杰伦/林俊杰 - 歌名"）
+                    if (artistPart.includes('/')) {
+                        const subArtists = artistPart.split('/').map(a => a.trim()).filter(a => a.length > 0);
+                        for (const artist of subArtists) {
+                            addProhibitedArtist(artist);
+                        }
+                    } else if (artistPart.length > 0 && artistPart.length < 20) {
+                        // 只添加第一部分（歌手），不添加第二部分（歌名）
+                        addProhibitedArtist(artistPart);
+                    }
                 }
+                // 如果不是 "歌手 - 歌名" 格式，不尝试提取
+                // 让 music-executor 从实际元数据中提取歌手
             }
         }
 
@@ -338,25 +351,39 @@ function executeCheckArtistDiversity(artistsParam: string): ToolResult {
     let resultMessage = `🎵 **多样性检查结果**\n\n得分: ${analysis.score}/100\n\n`;
     resultMessage += analysis.feedback.join('\n');
 
+    // 强制多样性检查：得分低于 70 分时拒绝节目
     if (analysis.score >= 70) {
         resultMessage += '\n\n✅ **通过**：多样性评分达标，节目可以保留。';
+        return {
+            success: true,
+            data: {
+                message: resultMessage,
+                score: analysis.score,
+                feedback: analysis.feedback,
+                violations: analysis.violations,
+                passed: true
+            }
+        };
     } else {
-        resultMessage += '\n\n⚠️ **未达标**：多样性评分过低，建议重新调整歌手选择。\n\n建议：\n';
-        resultMessage += '- 增加不同语言的歌手\n';
+        resultMessage += '\n\n❌ **未通过**：多样性评分过低，必须重新调整歌手选择！\n\n';
+        resultMessage += '**强制要求**：\n';
+        resultMessage += '- 增加不同语言的歌手（中英混搭）\n';
         resultMessage += '- 选择不同年代和流派的艺人\n';
         resultMessage += '- 避免同一个歌手出现多次\n';
         resultMessage += '- 尝试一些小众或新兴艺人\n';
+        resultMessage += '\n请修改歌曲选择后重新提交检查。';
+        
+        return {
+            success: false,  // 强制返回失败
+            data: {
+                message: resultMessage,
+                score: analysis.score,
+                feedback: analysis.feedback,
+                violations: analysis.violations,
+                passed: false
+            }
+        };
     }
-
-    return {
-        success: true,
-        data: {
-            message: resultMessage,
-            score: analysis.score,
-            feedback: analysis.feedback,
-            violations: analysis.violations
-        }
-    };
 }
 
 // ================== Context Helpers ==================

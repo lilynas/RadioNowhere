@@ -38,7 +38,7 @@ interface ContextSummary {
 
 // ================== Constants ==================
 
-const CONTEXT_WINDOW_MS = 10 * 60 * 1000;  // 10 分钟
+const CONTEXT_WINDOW_MS = 60 * 60 * 1000;  // 60 分钟（从10分钟延长）
 const MAX_TRACK_HISTORY = STATE.MAX_TRACK_HISTORY;
 const MAX_TOPIC_HISTORY = STATE.MAX_TOPIC_HISTORY;
 const COMPRESS_THRESHOLD = STATE.COMPRESS_THRESHOLD;

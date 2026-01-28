@@ -19,6 +19,18 @@ export const SHOW = {
     DEFAULT_TIMELINE_DURATION: 120,   // 默认时间线时长 (秒)
 };
 
+// ================== 节目时长预设 ==================
+
+export const SHOW_DURATION_PRESETS = [
+    { label: '快讯', value: 300, icon: '⚡', description: '5分钟碎片时间' },
+    { label: '标准', value: 480, icon: '📻', description: '8分钟经典电台' },
+    { label: '常规', value: 900, icon: '🎧', description: '15分钟休息时光' },
+    { label: '深度', value: 1500, icon: '📚', description: '25分钟深度内容' },
+    { label: '长篇', value: 2100, icon: '🚗', description: '35分钟长途陪伴' },
+    { label: '深夜', value: 2700, icon: '🌙', description: '45分钟深夜电台' },
+] as const;
+
+
 // ================== 过渡音乐配置 ==================
 
 export const TRANSITION = {
@@ -80,9 +92,9 @@ export const AGENT = {
 
 export const HISTORY = {
     MAX_RECENT_SHOWS: 50,             // 最大近期节目记录数
-    MAX_RECENT_SONGS: 100,            // 最大近期歌曲记录数
-    EXPIRY_HOURS: 2,                  // 历史过期时间 (小时)
-    DUPLICATE_CHECK_HOURS: 1,         // 重复检查时间范围（小时）
+    MAX_RECENT_SONGS: 200,            // 最大近期歌曲记录数（增加到200首）
+    EXPIRY_HOURS: 24,                 // 历史过期时间 (小时) - 延长到24小时
+    DUPLICATE_CHECK_HOURS: 2,         // 重复检查时间范围（小时）- 延长到2小时
 };
 
 // ================== 全局状态配置 ==================

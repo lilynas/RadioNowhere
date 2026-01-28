@@ -1,6 +1,62 @@
-// 禁止列表管理 - 追踪近24小时内已使用的歌手
-const prohibitedArtists: Array<{ artist: string; timestamp: number }> = [];
+/**
+ * Diversity Manager - 歌手多样性管理器
+ * 追踪近24小时内已使用的歌手，持久化到 localStorage
+ */
+
+// ================== Storage Constants ==================
+
+const STORAGE_KEY = 'nowhere_fm_prohibited_artists';
 const ARTIST_PROHIBITION_MS = 24 * 60 * 60 * 1000; // 24小时
+
+// ================== Types ==================
+
+interface ProhibitedArtistEntry {
+    artist: string;
+    timestamp: number;
+}
+
+// ================== Storage Functions ==================
+
+/**
+ * 从 localStorage 加载禁止列表
+ */
+function loadProhibitedArtists(): ProhibitedArtistEntry[] {
+    if (typeof window === 'undefined') {
+        return [];
+    }
+
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored) as ProhibitedArtistEntry[];
+            // 过滤过期记录
+            const cutoff = Date.now() - ARTIST_PROHIBITION_MS;
+            return parsed.filter(a => a.timestamp > cutoff);
+        }
+    } catch (e) {
+        console.warn('[DiversityManager] Failed to load from localStorage:', e);
+    }
+
+    return [];
+}
+
+/**
+ * 保存禁止列表到 localStorage
+ */
+function saveProhibitedArtists(artists: ProhibitedArtistEntry[]): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(artists));
+    } catch (e) {
+        console.warn('[DiversityManager] Failed to save to localStorage:', e);
+    }
+}
+
+// ================== State Management ==================
+
+// 初始化时从 localStorage 加载
+let prohibitedArtists: ProhibitedArtistEntry[] = loadProhibitedArtists();
 
 /**
  * 获取禁止列表（近24小时内已使用的歌手）
@@ -9,8 +65,13 @@ export function getProhibitedArtists(): string[] {
     const cutoff = Date.now() - ARTIST_PROHIBITION_MS;
     // 清理过期记录
     const validArtists = prohibitedArtists.filter(a => a.timestamp > cutoff);
-    prohibitedArtists.length = 0;
-    prohibitedArtists.push(...validArtists);
+    
+    // 如果有清理，更新内存和存储
+    if (validArtists.length !== prohibitedArtists.length) {
+        prohibitedArtists = validArtists;
+        saveProhibitedArtists(prohibitedArtists);
+    }
+    
     return prohibitedArtists.map(a => a.artist);
 }
 
@@ -18,8 +79,18 @@ export function getProhibitedArtists(): string[] {
  * 记录已使用的歌手（添加到禁止列表）
  */
 export function addProhibitedArtist(artist: string): void {
-    if (!prohibitedArtists.some(a => a.artist === artist)) {
-        prohibitedArtists.push({ artist, timestamp: Date.now() });
+    // 标准化歌手名（去除首尾空格）
+    const normalizedArtist = artist.trim();
+    if (!normalizedArtist) return;
+
+    // 检查是否已存在（不区分大小写）
+    const exists = prohibitedArtists.some(
+        a => a.artist.toLowerCase() === normalizedArtist.toLowerCase()
+    );
+    
+    if (!exists) {
+        prohibitedArtists.push({ artist: normalizedArtist, timestamp: Date.now() });
+        saveProhibitedArtists(prohibitedArtists);
     }
 }
 
@@ -27,7 +98,26 @@ export function addProhibitedArtist(artist: string): void {
  * 批量记录多个歌手
  */
 export function addProhibitedArtists(artists: string[]): void {
-    artists.forEach(artist => addProhibitedArtist(artist));
+    let hasNew = false;
+    
+    for (const artist of artists) {
+        const normalizedArtist = artist.trim();
+        if (!normalizedArtist) continue;
+
+        const exists = prohibitedArtists.some(
+            a => a.artist.toLowerCase() === normalizedArtist.toLowerCase()
+        );
+        
+        if (!exists) {
+            prohibitedArtists.push({ artist: normalizedArtist, timestamp: Date.now() });
+            hasNew = true;
+        }
+    }
+    
+    // 只有新增时才保存
+    if (hasNew) {
+        saveProhibitedArtists(prohibitedArtists);
+    }
 }
 
 /**
@@ -103,5 +193,42 @@ export function analyzeDiversity(artists: string[]): {
  * 清空禁止列表（仅用于测试或管理员操作）
  */
 export function clearProhibitedArtists(): void {
-    prohibitedArtists.length = 0;
+    prohibitedArtists = [];
+    saveProhibitedArtists(prohibitedArtists);
+}
+
+/**
+ * 获取禁止列表的统计信息（用于调试）
+ */
+export function getProhibitedArtistsStats(): {
+    count: number;
+    oldestTimestamp: number | null;
+    newestTimestamp: number | null;
+} {
+    const artists = getProhibitedArtists();
+    if (prohibitedArtists.length === 0) {
+        return { count: 0, oldestTimestamp: null, newestTimestamp: null };
+    }
+    
+    const timestamps = prohibitedArtists.map(a => a.timestamp);
+    return {
+        count: artists.length,
+        oldestTimestamp: Math.min(...timestamps),
+        newestTimestamp: Math.max(...timestamps)
+    };
+}
+
+// ================== Debug Helper ==================
+
+// 暴露到 window 对象以便在浏览器控制台中调试
+if (typeof window !== 'undefined') {
+    (window as unknown as { nowhereFmDiversity: object }).nowhereFmDiversity = {
+        getProhibited: getProhibitedArtists,
+        getStats: getProhibitedArtistsStats,
+        clear: clearProhibitedArtists,
+        isProhibited: isArtistProhibited,
+        // 查看完整禁止列表（包含时间戳）
+        getFullList: () => prohibitedArtists,
+    };
+    console.log('[DiversityManager] Debug tools available: window.nowhereFmDiversity');
 }

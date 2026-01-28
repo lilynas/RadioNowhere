@@ -75,7 +75,13 @@ export async function prepareMusicBlock(
             radioMonitor.log('DIRECTOR', `Searching music: ${block.search}`, 'info');
             const tracks = await searchMusic(block.search);
             if (tracks.length > 0) {
-                state.musicCache.set(block.search, tracks[0]);
+                // 从搜索结果中随机选择一首，增加多样性
+                // 优先从前5个结果中随机选择（通常相关性更高）
+                const maxIndex = Math.min(5, tracks.length);
+                const randomIndex = Math.floor(Math.random() * maxIndex);
+                const selectedTrack = tracks[randomIndex];
+                state.musicCache.set(block.search, selectedTrack);
+                radioMonitor.log('DIRECTOR', `Selected track ${randomIndex + 1}/${tracks.length}: ${selectedTrack.name} - ${selectedTrack.artist.join(', ')}`, 'info');
             } else {
                 radioMonitor.log('DIRECTOR', `Music not found: ${block.search}`, 'warn');
                 return;
@@ -260,8 +266,12 @@ export async function executeMusicBlock(
                 radioMonitor.log('DIRECTOR', `Music not found: ${block.search}`, 'warn');
                 return;
             }
-            track = tracks[0];
+            // 从搜索结果中随机选择一首，增加多样性
+            const maxIndex = Math.min(5, tracks.length);
+            const randomIndex = Math.floor(Math.random() * maxIndex);
+            track = tracks[randomIndex];
             state.musicCache.set(block.search, track);
+            radioMonitor.log('DIRECTOR', `Selected fallback track ${randomIndex + 1}/${tracks.length}: ${track.name}`, 'info');
         }
 
         const url = await getMusicUrl(track.id, 320, track.source);
