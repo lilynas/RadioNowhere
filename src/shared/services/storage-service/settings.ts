@@ -54,7 +54,7 @@ export const DEFAULT_SETTINGS: IApiSettings = {
     ttsVoice: "Aoede",
     ttsUseVertex: false,
     // Microsoft TTS
-    msTtsEndpoint: "https://tts.cjack.top",
+    msTtsEndpoint: "https://tts.shirone.de",
     msTtsVoice: "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)",
     msTtsVolume: 100,
     msTtsRate: 0,
