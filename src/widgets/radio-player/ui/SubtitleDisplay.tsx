@@ -16,6 +16,9 @@ interface DisplayInfo {
     speaker: string;
     displayName: string;
     subtitle?: string;
+    // P1-1 Fix: 多人讲话支持
+    multiSpeakerLines?: Array<{ speaker: string; displayName: string; text: string }>;
+    isBatched?: boolean;
 }
 
 const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }: SubtitleDisplayProps) => {
@@ -25,6 +28,13 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
         displayName: 'Radio Nowhere',
         subtitle: ''
     });
+
+    // P0-1 Fix: 当 block 类型从 talk 切换到其他类型时，自动收起展开状态
+    useEffect(() => {
+        if (displayInfo.type !== 'talk' && isExpanded) {
+            onExpandChange(false);
+        }
+    }, [displayInfo.type, isExpanded, onExpandChange]);
 
     useEffect(() => {
         if (!currentLine) {
@@ -89,14 +99,44 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
                 'ARIA': 'Aria',
                 'aria': 'Aria',
             };
-            const displayName = hostNames[speaker] || speaker;
+            
+            // P1-1 Fix: 支持多人讲话（批量 TTS 模式）
+            if (currentLine.isBatched && currentLine.multiSpeaker && currentLine.multiSpeaker.length > 1) {
+                // 多人对话模式
+                const multiLines = currentLine.multiSpeaker.map(line => ({
+                    speaker: line.speaker,
+                    displayName: hostNames[line.speaker] || line.speaker,
+                    text: line.text
+                }));
+                
+                // 显示所有参与对话的主持人名称
+                const speakerNames = [...new Set(multiLines.map(l => l.displayName))];
+                const displayName = speakerNames.join(' & ');
+                
+                // 合并所有台词作为字幕
+                const combinedSubtitle = multiLines
+                    .map(l => `【${l.displayName}】${l.text}`)
+                    .join('\n\n');
+                
+                setDisplayInfo({
+                    type: 'talk',
+                    speaker: speaker,
+                    displayName: displayName,
+                    subtitle: combinedSubtitle,
+                    multiSpeakerLines: multiLines,
+                    isBatched: true
+                });
+            } else {
+                // 单人对话模式（原有逻辑）
+                const displayName = hostNames[speaker] || speaker;
 
-            setDisplayInfo({
-                type: 'talk',
-                speaker: speaker,
-                displayName: displayName,
-                subtitle: text
-            });
+                setDisplayInfo({
+                    type: 'talk',
+                    speaker: speaker,
+                    displayName: displayName,
+                    subtitle: text
+                });
+            }
         }
     }, [currentLine]);
 
@@ -185,6 +225,13 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
     const [showLyricsOverlay, setShowLyricsOverlay] = useState(false);
     const [lyricsText, setLyricsText] = useState("");
 
+    // Bug2 Fix: 当切换到非 music 模式时，立即关闭歌词弹窗
+    useEffect(() => {
+        if (displayInfo.type !== 'music' && showLyricsOverlay) {
+            setShowLyricsOverlay(false);
+        }
+    }, [displayInfo.type, showLyricsOverlay]);
+
     // Parse lyrics to simple text array
     const parsedLyrics = React.useMemo(() => {
         if (!lyricsText) return [];
@@ -195,11 +242,13 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
     }, [lyricsText]);
 
     // Default Cover Art Component (Generated Fluid Art)
+    // Bug2 Fix: 只在 music 模式下允许点击显示歌词
     const DefaultCover = () => (
         <div 
             className="w-48 h-48 md:w-56 md:h-56 rounded-[24px] overflow-hidden relative shadow-2xl shadow-black/50 group mx-auto cursor-pointer"
             onClick={() => {
-                if (lyricsText) {
+                // Bug2 Fix: 只在 music 模式且有歌词时才显示歌词弹窗
+                if (displayInfo.type === 'music' && lyricsText) {
                     setShowLyricsOverlay(true);
                 }
             }}
@@ -412,11 +461,11 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
                                 </motion.div>
                             )}
 
-                            {/* Main Title (Speaker Name) */}
+                            {/* Main Title (Speaker Name) - Bug1 Fix: 减小主持人名称字体，让台词更突出 */}
                             <motion.h2
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
-                                className={`font-black tracking-tight text-center text-white mb-6 ${isExpanded ? 'text-xl' : 'text-2xl md:text-3xl'
+                                className={`font-bold tracking-tight text-center text-white mb-4 ${isExpanded ? 'text-base' : 'text-lg md:text-xl'
                                     }`}
                             >
                                 {displayInfo.displayName}
