@@ -72,6 +72,13 @@ class MailQueue {
     }
 
     /**
+     * 获取所有来信（包括已处理的）用于显示历史
+     */
+    getAll(): MailItem[] {
+        return [...this.queue];
+    }
+
+    /**
      * 清空队列
      */
     clear(): void {
