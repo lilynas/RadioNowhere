@@ -2,10 +2,18 @@ import { TimelineBlock, PlayerState } from '@shared/types/radio-core';
 import { AgentStatus, ScriptEvent, LogEvent } from '@shared/services/monitor-service';
 import { ShowType } from '@features/content/lib/cast-system';
 
-// Extended TimelineBlock with history marker
+// P0-3 Fix: 扩展音乐元数据
+export interface MusicMeta {
+    trackName?: string;
+    artist?: string;
+    album?: string;
+}
+
+// Extended TimelineBlock with history marker and music metadata
 export type ExtendedBlock = TimelineBlock & {
     isHistory?: boolean;
     showTitle?: string;
+    musicMeta?: MusicMeta;  // P0-3: 缓存的音乐元数据
 };
 
 export interface RadioPlayerState {

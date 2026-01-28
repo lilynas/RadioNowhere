@@ -2,8 +2,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, ChevronDown, Mic2, Music, Zap, X } from 'lucide-react';
-import { TimelineBlock } from '@shared/types/radio-core';
+import { Clock, Mic2, Music, Zap, X } from 'lucide-react';
 import { ExtendedBlock } from '../types';
 
 interface TimelinePanelProps {
@@ -16,13 +15,39 @@ interface TimelinePanelProps {
     timelineScrollRef: React.RefObject<HTMLDivElement | null>;
 }
 
-function getBlockLabel(block: TimelineBlock): string {
+// P0-3 Fix: 优化 music block 标签显示，支持 musicMeta
+function getBlockLabel(block: ExtendedBlock): string {
     switch (block.type) {
-        case 'talk': return block.scripts[0]?.text.slice(0, 15) || 'Conversation';
-        case 'music': return block.search;
-        case 'music_control': return `Control: ${block.action}`;
-        default: return block.type;
+        case 'talk': 
+            return block.scripts[0]?.text.slice(0, 15) || 'Conversation';
+        case 'music': 
+            // 优先使用缓存的音乐元数据
+            if (block.musicMeta?.trackName) {
+                const trackName = block.musicMeta.trackName;
+                if (trackName.length > 20) {
+                    return trackName.slice(0, 18) + '...';
+                }
+                return trackName;
+            }
+            // 降级到搜索关键词
+            const rawSearch = block.search?.trim() || 'Music';
+            if (rawSearch.length > 20) {
+                return rawSearch.slice(0, 18) + '...';
+            }
+            return rawSearch;
+        case 'music_control': 
+            return `Control: ${block.action}`;
+        default: 
+            return block.type;
     }
+}
+
+// P0-3 Fix: 获取音乐副标题（艺术家信息）
+function getMusicSubtitle(block: ExtendedBlock): string | null {
+    if (block.type === 'music' && block.musicMeta?.artist) {
+        return block.musicMeta.artist;
+    }
+    return null;
 }
 
 export default function TimelinePanel({
@@ -114,6 +139,12 @@ export default function TimelinePanel({
                                                 }`}>
                                                 {getBlockLabel(block)}
                                             </div>
+                                            {/* P0-3 Fix: 显示音乐艺术家信息 */}
+                                            {getMusicSubtitle(block) && (
+                                                <div className={`text-[11px] truncate ${isActive ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                                                    {getMusicSubtitle(block)}
+                                                </div>
+                                            )}
                                             <div className="text-[10px] text-neutral-500 uppercase font-mono mt-0.5 flex items-center gap-2">
                                                 <span>{block.type === 'talk' ? '💬' : block.type === 'music' ? '🎵' : '⚡'}</span>
                                                 {isActive ? 'NOW PLAYING' : isHistory ? 'PLAYED' : 'UP NEXT'}
