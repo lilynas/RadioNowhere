@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { IApiSettings } from '@shared/services/storage-service/settings';
+import { SHOW_DURATION_PRESETS } from '@shared/utils/constants';
+
 
 interface PreloadSettingsProps {
     settings: IApiSettings;
@@ -82,6 +84,42 @@ export default function PreloadSettings({
 
                     </div>
                 )}
+            </div>
+
+            {/* 节目时长选择 */}
+            <div className="space-y-3 pt-3 border-t border-neutral-800/50">
+                <div className="flex items-center justify-between">
+                    <span className="text-xs text-neutral-500">节目时长</span>
+                    <span className="text-[10px] text-neutral-600">
+                        {SHOW_DURATION_PRESETS.find(p => p.value === settings.showDuration)?.description || '自定义'}
+                    </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                    {SHOW_DURATION_PRESETS.map((preset) => {
+                        const isActive = settings.showDuration === preset.value;
+                        return (
+                            <button
+                                key={preset.value}
+                                onClick={() => onSettingChange("showDuration", preset.value)}
+                                className={`
+                                    flex flex-col items-center justify-center p-2 rounded-lg transition-all
+                                    ${isActive
+                                        ? 'bg-gradient-to-br from-emerald-600/20 to-teal-600/20 border-2 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
+                                        : 'bg-neutral-800/50 border border-neutral-700 hover:bg-neutral-800 hover:border-neutral-600'
+                                    }
+                                `}
+                            >
+                                <span className="text-xl mb-0.5">{preset.icon}</span>
+                                <span className={`text-[10px] font-medium ${isActive ? 'text-emerald-400' : 'text-neutral-400'}`}>
+                                    {preset.label}
+                                </span>
+                                <span className={`text-[9px] ${isActive ? 'text-emerald-500/70' : 'text-neutral-600'}`}>
+                                    {Math.floor(preset.value / 60)}分钟
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
         </div>
     );

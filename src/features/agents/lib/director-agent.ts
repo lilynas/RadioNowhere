@@ -296,7 +296,8 @@ export class DirectorAgent {
     }
 
     private async generateMainTimeline(theme?: string, userRequest?: string, stationType?: ShowType): Promise<ShowTimeline> {
-        const duration = SHOW.MAIN_DURATION;
+        const settings = getSettings();
+        const duration = settings.showDuration || SHOW.MAIN_DURATION;
         console.log(`[Director] Generating new timeline (${duration}s, stationType: ${stationType})...`);
         radioMonitor.updateStatus('DIRECTOR', 'BUSY', 'Generating timeline...');
         return writerAgent.generateTimeline(duration, theme, userRequest, stationType);

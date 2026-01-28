@@ -295,7 +295,7 @@ export class WriterAgent {
 
         // 根据是否指定节目类型生成不同的提示
         const showTypeInstruction = selectedShowType
-            ? this.getSpecificShowTypeInstruction(selectedShowType)
+            ? this.getSpecificShowTypeInstruction(selectedShowType, duration)
             : getRadioSetting();
 
         return `${showTypeInstruction}
@@ -647,7 +647,7 @@ ${getVoiceListForPrompt()}
      * 获取特定节目类型的指令
      * 当用户选择了特定电台类型时，强制AI生成该类型内容
      */
-    private getSpecificShowTypeInstruction(showType: ShowType): string {
+    private getSpecificShowTypeInstruction(showType: ShowType, duration: number = 480): string {
         const showTypeNames: Record<ShowType, { name: string; emoji: string; description: string }> = {
             news: { name: '新闻时事', emoji: '📰', description: '播报新闻要点、深度分析时事热点、社会现象评论' },
             talk: { name: '脱口秀', emoji: '💬', description: '两位主持人轻松聊天，分享生活趣事、热门话题、个人见解' },
@@ -665,6 +665,55 @@ ${getVoiceListForPrompt()}
 
         const info = showTypeNames[showType] || { name: showType, emoji: '📻', description: '' };
 
+        // 根据时长动态计算内容建议
+        const getDurationGuidance = (dur: number) => {
+            const minutes = Math.floor(dur / 60);
+            if (dur <= 360) { // ≤6分钟
+                return {
+                    talk: '60-70%',
+                    music: '30-40%',
+                    musicCount: '2-3首',
+                    blockCount: '4-6个',
+                    talkDepth: '简短精炼，每个话题1-2分钟'
+                };
+            } else if (dur <= 600) { // 6-10分钟
+                return {
+                    talk: '70-75%',
+                    music: '25-30%',
+                    musicCount: '3-4首',
+                    blockCount: '6-10个',
+                    talkDepth: '适度展开，每个话题2-3分钟'
+                };
+            } else if (dur <= 1200) { // 10-20分钟
+                return {
+                    talk: '70-75%',
+                    music: '25-30%',
+                    musicCount: '4-6首',
+                    blockCount: '10-15个',
+                    talkDepth: '深入讨论，每个话题3-5分钟'
+                };
+            } else if (dur <= 1800) { // 20-30分钟
+                return {
+                    talk: '70-75%',
+                    music: '25-30%',
+                    musicCount: '6-8首',
+                    blockCount: '15-20个',
+                    talkDepth: '多话题深度展开，主题清晰分段'
+                };
+            } else { // >30分钟
+                return {
+                    talk: '65-70%',
+                    music: '30-35%',
+                    musicCount: '8-12首',
+                    blockCount: '20-30个',
+                    talkDepth: '长篇叙事，包含多个完整章节'
+                };
+            }
+        };
+
+        const guidance = getDurationGuidance(duration);
+        const minutes = Math.floor(duration / 60);
+
         return `你是 **${RADIO.NAME} ${RADIO.FREQUENCY}** 网络电台的内容创作者。
 
 ## 📻 电台身份
@@ -679,10 +728,21 @@ ${getVoiceListForPrompt()}
 ### 节目要求
 ${info.description}
 
-### 内容比例要求
-- **对话/讲述内容**：占节目的 70-80%
-- **音乐穿插**：占节目的 20-30%，用于烘托氛围和过渡
+### 本期节目时长：${minutes}分钟 (${duration}秒)
+
+### 内容比例要求（针对本期时长）
+- **对话/讲述内容**：占节目的 ${guidance.talk}
+- **音乐穿插**：占节目的 ${guidance.music}，建议${guidance.musicCount}
+- **内容深度**：${guidance.talkDepth}
+- **结构建议**：共${guidance.blockCount} talk/music块
 - 音乐是辅助，不是主体！节目的核心是「${info.name}」的内容
+
+### 🎵 音乐时长规范（强制执行）
+- **每首音乐的 \`duration\` 字段必须设置**
+- 单首音乐推荐时长：30-90秒
+- 特殊情况（如节目结尾）可适当延长至120秒
+- **禁止**不设置duration或设置过大值（>180秒）
+- 音乐总时长应控制在 ${Math.floor(duration * 0.25)}-${Math.floor(duration * 0.35)} 秒范围内
 
 ### 🚫 禁止事项
 - ❌ 不要生成其他类型的节目
