@@ -90,6 +90,16 @@ export default function AgentMonitor() {
         }
     };
 
+    // 格式化时间戳
+    const formatTime = (timestamp: number): string => {
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    };
+
     if (!isOpen) {
         return (
             <button
@@ -190,8 +200,12 @@ export default function AgentMonitor() {
                                         <div key={i} className="bg-neutral-800/50 rounded p-2 border border-neutral-700/50">
                                             <div className="flex items-center gap-1.5 mb-1">
                                                 {getThoughtIcon(thought.type)}
-                                                <span className="text-[9px] font-semibold text-neutral-400">
+                                                <span className="text-[9px] font-semibold text-neutral-400 flex-1">
                                                     {getThoughtLabel(thought.type, thought.toolName)}
+                                                </span>
+                                                {/* 时间戳 */}
+                                                <span className="text-[8px] font-mono text-neutral-600">
+                                                    {formatTime(thought.timestamp)}
                                                 </span>
                                             </div>
                                             <pre className="text-[9px] font-mono text-neutral-300 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
@@ -210,6 +224,8 @@ export default function AgentMonitor() {
                                 ) : (
                                     [...logs].reverse().map((log, i) => (
                                         <div key={i} className="text-[9px] font-mono leading-relaxed mb-1">
+                                            {/* 时间戳 */}
+                                            <span className="text-neutral-700">{formatTime(log.timestamp)}</span>{' '}
                                             <span className="text-neutral-600">[{log.agent}]</span>{' '}
                                             <span className={`break-all ${log.level === 'error' ? 'text-red-400' :
                                                 log.level === 'warn' ? 'text-yellow-400' :
