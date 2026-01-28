@@ -20,11 +20,20 @@ export interface MusicMeta {
     coverUrl?: string;
 }
 
+// P1-1 Fix: 多人讲话支持
+export interface MultiSpeakerLine {
+    speaker: string;
+    text: string;
+}
+
 export interface ScriptEvent {
     speaker: string;
     text: string;
     blockId: string;
     musicMeta?: MusicMeta;
+    // P1-1 Fix: 批量 TTS 模式下的多人对话列表
+    multiSpeaker?: MultiSpeakerLine[];
+    isBatched?: boolean;
 }
 
 export interface LogEvent {
@@ -100,6 +109,24 @@ class RadioMonitor {
      */
     emitScript(speaker: string, text: string, blockId: string): void {
         const data: ScriptEvent = { speaker, text, blockId };
+        this.emit('script', data);
+    }
+
+    /**
+     * P1-1 Fix: 发出批量台词事件（多人对话）
+     */
+    emitBatchedScript(lines: MultiSpeakerLine[], blockId: string): void {
+        // 合并多人对话：使用第一个说话人作为主 speaker，合并所有文本
+        const firstSpeaker = lines[0]?.speaker || 'host1';
+        const combinedText = lines.map(l => l.text).join(' ');
+        
+        const data: ScriptEvent = {
+            speaker: firstSpeaker,
+            text: combinedText,
+            blockId,
+            multiSpeaker: lines,
+            isBatched: true
+        };
         this.emit('script', data);
     }
 

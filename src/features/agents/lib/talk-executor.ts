@@ -124,9 +124,12 @@ export async function executeTalkBlock(
     if (batchAudioData) {
         radioMonitor.log('DIRECTOR', `Playing batched audio for ${block.scripts.length} lines`, 'info');
 
-        for (const script of block.scripts) {
-            radioMonitor.emitScript(script.speaker, script.text, block.id);
-        }
+        // P1-1 Fix: 使用批量脚本事件，而不是循环发送单个事件
+        const lines = block.scripts.map(script => ({
+            speaker: script.speaker,
+            text: script.text
+        }));
+        radioMonitor.emitBatchedScript(lines, block.id);
 
         try {
             await audioMixer.playVoice(batchAudioData);
