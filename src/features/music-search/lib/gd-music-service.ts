@@ -11,7 +11,6 @@ const DEFAULT_SOURCE = "netease";
 
 // 稳定音乐源（只使用这些）
 const STABLE_SOURCES = ['netease', 'kuwo', 'joox'] as const;
-type StableSource = typeof STABLE_SOURCES[number];
 
 // ================== Interfaces ==================
 

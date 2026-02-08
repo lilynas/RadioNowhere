@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Save, Zap, CheckCircle, Loader2 } from "lucide-react";
 
 import { useSettingsPanel } from "./hooks/useSettingsPanel";
-import { APISettings, TTSSettings, PreloadSettings } from "./ui";
+import { APISettings, TTSSettings, PreloadSettings, UserPreferenceSettings } from "./ui";
 
 interface SettingsPanelProps {
     isOpen: boolean;
@@ -94,6 +94,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                 settings={settings}
                                 onSettingChange={handleChange}
                             />
+
+                            <UserPreferenceSettings />
 
                             {/* Actions */}
                             <div className="flex gap-3 pt-2">

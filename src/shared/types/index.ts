@@ -4,3 +4,4 @@
 
 // 核心电台类型
 export * from './radio-core';
+export * from './segment';

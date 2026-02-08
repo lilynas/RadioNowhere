@@ -7,7 +7,6 @@ import { getSettings } from '@shared/services/storage-service/settings';
 import { RADIO, AGENT } from '@shared/utils/constants';
 import {
     ShowTimeline,
-    TimelineBlock,
 } from '@shared/types/radio-core';
 import { globalState } from '@shared/stores/global-state';
 import { radioMonitor } from '@shared/services/monitor-service';
@@ -19,6 +18,11 @@ import {
 } from './writer-tools';
 import { getProhibitedArtists } from '@features/music-search/lib/diversity-manager';
 import { parseResponse as parseTimelineResponse } from './response-parser';
+import { getShowConfig, ShowConfig } from './show-config';
+import { buildPromptByType } from './prompt-templates';
+import { getGenrePromptSection, getGenreSuggestions, recordUsedGenre } from '@features/music-search/lib/genre-wheel';
+import { SHOW_SEGMENT_STRUCTURES } from '@shared/types/segment';
+import { getUserPreferencePromptContext } from '@features/user-preferences/lib';
 
 // ================== Constants ==================
 
@@ -94,6 +98,10 @@ import { Cast, castDirector, ShowType } from './cast-system';
 export class WriterAgent {
     private currentCast: Cast | null = null;
     private conversationHistory: Array<{ role: string; content: string }> = [];
+    private currentShowType: ShowType = 'talk';
+    private currentShowConfig: ShowConfig = getShowConfig('talk');
+    private activeToolNames: string[] = [];
+    private currentGenreSuggestions: string[] = [];
 
     /**
      * 获取当前演员阵容
@@ -112,15 +120,28 @@ export class WriterAgent {
         userRequest?: string,
         showType?: ShowType
     ): Promise<ShowTimeline> {
-        // 1. 选择节目类型和演员阵容
+        // 1. 选择节目类型、配置和演员阵容
         const selectedShowType = showType || castDirector.randomShowType();
+        const config = getShowConfig(selectedShowType);
+
+        this.currentShowType = selectedShowType;
+        this.currentShowConfig = config;
+        this.activeToolNames = this.getToolsForType(selectedShowType, config);
+        this.currentGenreSuggestions = selectedShowType === 'music' ? getGenreSuggestions(3) : [];
         this.currentCast = castDirector.selectCast(selectedShowType);
 
         radioMonitor.updateStatus('WRITER', 'BUSY', `ReAct Loop: ${selectedShowType}`);
         radioMonitor.log('WRITER', `Starting ReAct loop for ${selectedShowType}`);
 
         // 2. 构建 ReAct 系统提示
-        const systemPrompt = this.buildReActSystemPrompt(duration, theme, userRequest);
+        const typePrompt = this.buildPromptForType(
+            selectedShowType,
+            config,
+            duration,
+            theme,
+            userRequest
+        );
+        const systemPrompt = this.buildReActSystemPrompt(typePrompt, selectedShowType, config);
 
         // 3. 初始化对话历史
         this.conversationHistory = [];
@@ -271,6 +292,10 @@ export class WriterAgent {
             return this.getDefaultTimeline();
         }
 
+        if (selectedShowType === 'music' && this.currentGenreSuggestions.length > 0) {
+            recordUsedGenre(this.currentGenreSuggestions[0]);
+        }
+
         radioMonitor.updateStatus('WRITER', 'IDLE', 'Generation complete');
         return finalTimeline;
     }
@@ -278,99 +303,60 @@ export class WriterAgent {
     /**
      * 构建 ReAct 系统提示
      */
-    private buildReActSystemPrompt(duration: number, theme?: string, userRequest?: string): string {
+    private buildReActSystemPrompt(typePrompt: string, showType: ShowType, config: ShowConfig): string {
         const historyContext = getHistoryContext();
-        const toolsDesc = getToolsDescription();
+        const toolsDesc = getToolsDescription(this.activeToolNames);
+        const userPreferenceContext = getUserPreferencePromptContext();
 
-        // 获取禁止列表
         const prohibitedArtists = getProhibitedArtists();
-        const prohibitionContext = prohibitedArtists.length > 0
-            ? `## ⚠️ 禁止使用的歌手（近24小时已使用）\n${prohibitedArtists.map(a => `- ${a}`).join('\n')}\n\n**注意：如果你选择了这些歌手，会导致节目被拒绝！**\n\n`
+        const shouldShowProhibited = this.activeToolNames.includes('search_music') || this.activeToolNames.includes('check_artist_diversity');
+        const prohibitionContext = shouldShowProhibited && prohibitedArtists.length > 0
+            ? `## ⚠️ 禁止使用的歌手（近24小时已使用）\n${prohibitedArtists.map(a => `- ${a}`).join('\n')}\n\n违反该列表会导致节目校验失败。`
             : '';
+
+        const flowSteps = [
+            this.activeToolNames.includes('check_duplicate') ? '1) 先调用 check_duplicate 检查主题是否重复。' : '',
+            this.activeToolNames.includes('fetch_news') ? '2) 若是资讯型内容，调用 fetch_news 获取素材。' : '',
+            this.activeToolNames.includes('search_music') ? '3) 需要音乐时用 search_music（可附带 genre_hint）。' : '',
+            this.activeToolNames.includes('check_artist_diversity') ? '4) 完稿后调用 check_artist_diversity 自检。' : '',
+            '5) 最终必须调用 submit_show 提交完整 timeline_json。'
+        ].filter(Boolean).join('\n');
+
+        const memoryContext = globalState.getContextForPrompt();
 
         return `${getRadioSetting()}
 
-${this.getTimeContext()}
+## 🧩 本期模式
+- 节目类型：${showType}
+- 对话占比建议：${config.talkRatio[0]}%-${config.talkRatio[1]}%
+- 音乐占比建议：${config.musicRatio[0]}%-${config.musicRatio[1]}%
+- 音乐用途：${config.musicPurpose}
 
-## 🎵 **音乐多样性要求（核心）**
-
-你必须在这个节目中展现**真正的音乐多样性**。这不仅仅是避免重复，而是创意和品味的体现。
-
-### 多样性原则
-
-**1. 语境驱动的歌手选择**
-   根据节目时段、主题、情绪来选择歌手风格和文化背景。同一个主题可以有完全不同的音乐表达：
-   
-   - 破晓时刻 → 民谣/独立 (朴树、赵雷) OR 古典/器乐 OR 爵士/舒缓
-   - 午间陪伴 → 流行/轻松 (周杰伦) OR 乡村/民族 OR 电子/舒适
-   - 深夜沉思 → 摇滚/实验 (五月天) OR 爵士/蓝调 OR 民谣/古风
-
-**2. 禁止列表遵守（强制）**
-   你有整个人类音乐库可选，为什么要在24小时内重复同一个歌手？
-
+${userPreferenceContext}
+${historyContext}
 ${prohibitionContext}
+${memoryContext ? `\n## 🧠 全局记忆\n${memoryContext}` : ''}
 
-**3. 跨越多个维度的多样化**
-   - 语言：中文 ↔ 英文 ↔ 日文 ↔ 其他
-   - 年代：经典 ↔ 80年代 ↔ 2000年代 ↔ 新兴（2020+）
-   - 流派：民谣 ↔ 摇滚 ↔ 爵士 ↔ 电子 ↔ 古典 ↔ 民族
-   - 地域：亚洲 ↔ 西方 ↔ 其他地域
-   - 知名度：超级巨星 ↔ 小众创作者
-
-**4. 避免的选歌模式**（如果出现会被拒绝）
-   ❌ 单节目中3次以上同一歌手
-   ❌ 连续选择同一风格歌手（民谣 → 民谣 → 民谣）
-   ❌ 只选"安全的热门艺人"
-   ❌ 忽视禁止列表
-   ❌ 完全无视节目主题乱选
-
-**5. 期望看到的多样性模式**
-   ✅ 节目1: 朴树(民谣/中文) + The Weeknd(电子/英文) + 五月天(摇滚/中文) + Norah Jones(爵士/英文)
-   ✅ 节目2: 薛之谦(流行/中文) + 新裤子(摇滚/中文) + 李荣浩(Rnb/中文) + Bon Iver(民谣/英文)
-   ✅ 节目3: 宇宙人(独立/中文) + 莫西子诗(民族/中文) + Daughter(暗民谣/英文) + 小米粒(古风/中文)
-
-### 多样性检查机制
-
-生成节目后，你必须调用 \`check_artist_diversity\` 工具来自我评估。
-- **得分≥70分**：✓ 通过，节目保留
-- **得分<70分**：✗ 失败，需要重新选择歌手
-
-## 你的任务
-生成一段约 ${duration} 秒的电台节目。
-
-## 可用工具
+## 🛠️ 可用工具
 ${toolsDesc}
 
 ## 工具调用格式
-使用以下 JSON 格式调用工具：
 \`\`\`json
 {"tool": "工具名", "args": {"参数名": "值"}}
 \`\`\`
 
-## 工作流程
-1. 先用 check_duplicate 确认你的节目概念不与近期雷同
-2. 用 search_music 搜索合适的歌曲
-3. (可选) 用 get_lyrics 获取歌词
-4. 编写完整脚本后，**必须**用 check_artist_diversity 检查多样性
-5. 多样性达标后，用 submit_show 提交
-
-## ⚠️ 重要：节目结构要求
-- 每个节目**必须**以一首过渡音乐结尾（作为节目之间的衔接）
-- 即使是脱口秀节目，结尾也要有一首歌曲
-- 结尾音乐时长建议 30-60 秒
-
-${historyContext}
-
-${theme ? `## 主题要求\n${theme}\n` : ''}
-${userRequest ? `## 听众来信\n"${userRequest}"\n请在节目中回应这封来信。\n` : ''}
+## 推荐工作流
+${flowSteps}
 
 ## 输出格式
 最终提交时，timeline_json 必须是以下格式：
 ${this.getOutputFormatExample()}
 
+${typePrompt}
+
 ${getVoiceListForPrompt()}
 
-开始工作！首先检查节目概念是否与近期雷同。`;
+开始工作！先进行必要工具调用，再完成节目。`;
     }
 
     /**
@@ -386,6 +372,76 @@ ${getVoiceListForPrompt()}
     {"type": "music", "id": "music-1", "action": "play", "search": "歌名", "duration": 60}
   ]
 }`;
+    }
+
+    private getShowTypeLabel(type: ShowType): string {
+        const labels: Record<ShowType, string> = {
+            talk: '脱口秀闲聊',
+            interview: '访谈对话',
+            news: '新闻资讯',
+            drama: '广播剧',
+            entertainment: '娱乐综艺',
+            story: '故事电台',
+            history: '历史故事',
+            science: '科普百科',
+            mystery: '奇闻异事',
+            nighttalk: '深夜心声',
+            music: '音乐专题'
+        };
+
+        return labels[type] || type;
+    }
+
+    private getToolsForType(type: ShowType, config: ShowConfig): string[] {
+        const allTools = [...config.requiredTools, ...config.optionalTools];
+
+        if (type !== 'music' && type !== 'talk' && type !== 'nighttalk' && type !== 'entertainment') {
+            return Array.from(new Set(allTools.filter(tool => tool !== 'check_artist_diversity')));
+        }
+
+        return Array.from(new Set(allTools));
+    }
+
+    private buildPromptForType(
+        type: ShowType,
+        config: ShowConfig,
+        duration: number,
+        theme?: string,
+        userRequest?: string
+    ): string {
+        const timeContext = this.getTimeContext();
+        const castDescription = this.currentCast
+            ? castDirector.getCastDescription(this.currentCast)
+            : '';
+        const segmentHints = SHOW_SEGMENT_STRUCTURES[type]
+            ?.map((segment, index) => `${index + 1}. ${segment.type}（${segment.durationHint[0]}-${segment.durationHint[1]}秒）${segment.description ? `：${segment.description}` : ''}`)
+            .join('\n') || '';
+        const historyContext = getHistoryContext();
+        const toolsDescription = getToolsDescription(this.activeToolNames);
+        const extraSections: string[] = [];
+
+        if (segmentHints) {
+            extraSections.push(`## 🧱 环节建议\n${segmentHints}`);
+        }
+
+        if (type === 'music' && this.currentGenreSuggestions.length > 0) {
+            extraSections.push(getGenrePromptSection(this.currentGenreSuggestions));
+        }
+
+        extraSections.push(`## 📐 比例约束\n- Talk 占比建议：${config.talkRatio[0]}%-${config.talkRatio[1]}%\n- Music 占比建议：${config.musicRatio[0]}%-${config.musicRatio[1]}%\n- 音乐用途：${config.musicPurpose}`);
+
+        return buildPromptByType(type, {
+            duration,
+            showType: type,
+            showTypeLabel: this.getShowTypeLabel(type),
+            castDescription,
+            timeContext,
+            toolsDescription,
+            historyContext,
+            theme,
+            userRequest,
+            extraSections
+        }, config);
     }
 
     /**
@@ -631,242 +687,12 @@ ${getVoiceListForPrompt()}
 请根据当前时段生成合适的节目内容和氛围。`;
     }
 
-    /**
-     * 构建生成 Prompt
-     */
-    private buildPrompt(duration: number, theme?: string, userRequest?: string): string {
-        const timeContext = this.getTimeContext();
-        const castDescription = this.currentCast
-            ? castDirector.getCastDescription(this.currentCast)
-            : '';
-
-        // 动态生成 speaker 示例
-        let prompt = `${getRadioSetting()}
-
-${timeContext}
-
-${castDescription}
-
-## 任务
-生成一段约 ${duration} 秒的电台节目时间线。
-
-## 输出格式
-严格按以下 JSON 格式输出，不要有其他内容：
-
-\`\`\`json
-{
-  "id": "唯一ID",
-  "title": "节目标题",
-  "estimatedDuration": ${duration},
-  "blocks": [
-    {
-      "type": "talk",
-      "id": "talk-1",
-      "scripts": [
-        {
-          "speaker": "host1",
-          "voiceName": "音色ID",
-          "text": "台词内容",
-          "mood": "warm",
-          "voiceStyle": "温柔地说"
-        }
-      ],
-      "backgroundMusic": {
-        "action": "continue",
-        "volume": 0.2
-      }
-    },
-    {
-      "type": "music",
-      "id": "music-1",
-      "action": "play",
-      "search": "歌名或歌手",
-      "duration": 240,
-      "intro": {
-        "speaker": "host2",
-        "text": "接下来这首歌...",
-        "mood": "cheerful"
-      }
-    },
-    {
-      "type": "music_control",
-      "id": "mc-1",
-      "action": "fade_out",
-      "fadeDuration": 2000
-    }
-  ]
-}
-\`\`\`
-
-## 可用类型
-
-### speaker (主持人ID)
-你可以自由定义主持人的名字和性格！只需使用以下ID：
-- "host1": 主持人1（女性）
-- "host2": 主持人2（男性）
-- "guest": 嘉宾
-- "news": 新闻播报
-
-请在节目开头通过台词自然地介绍主持人，如："大家好，我是xxx，今晚和我一起的是xxx..."
-
-### mood (情绪)
-- "cheerful": 开朗
-- "calm": 平静
-- "excited": 兴奋
-- "serious": 严肃
-- "warm": 温暖
-- "playful": 俏皮
-- "melancholy": 忧郁
-- "mysterious": 神秘
-
-### backgroundMusic.action
-- "continue": 继续播放（调整音量）
-- "fade": 淡出
-- "pause": 暂停
-
-### music_control.action
-- "pause": 暂停
-- "resume": 继续
-- "fade_out": 淡出
-- "fade_in": 淡入
-
-## 内容要求
-1. **对话要丰富**：主持人之间的对话要自然、有来有往，每个 talk 块至少 3-5 句台词
-2. **音乐时长**：
-    - 可以让音乐完整播放（不设 duration，或 duration: 240-360 秒，即 4-6 分钟）
-    - 优先让音乐完整播放，只有在特殊场景（如介绍多首歌曲）时才缩短时长
-    - 也可以在播放过程中主持人开始说话（通过 backgroundMusic.action: "continue" + volume: 0.15）
-3. **过渡自然**：音乐 fade_out 后主持人要有承接的话语
-4. **内容深入**：话题展开要详细，不要蜻蜓点水
-5. **情感丰富**：台词要有感情起伏，设置合适的 mood 和 voiceStyle
-6. **节目节奏**：可以是 [对话] → [音乐完整播放] → [评论] → [背景音乐+聊天]
-
-${getVoiceListForPrompt()}
-`;
-
-        if (theme) {
-            prompt += `\n## 主题要求\n${theme}\n`;
-        }
-
-        if (userRequest) {
-            prompt += `\n## 听众来信\n"${userRequest}"\n请在节目中回应这封来信。\n`;
-        }
-
-        // 注入上下文记忆（避免重复）
-        const context = globalState.getContextForPrompt();
-        if (context) {
-            prompt += `\n${context}\n`;
-        }
-
-        prompt += `\n请直接输出 JSON，不要有任何其他解释文字。`;
-
-        return prompt;
-    }
-
-    /**
-     * 调用 AI 生成
-     */
-    private async callAI(prompt: string): Promise<string> {
-        const settings = getSettings();
-        radioMonitor.updateStatus('WRITER', 'BUSY', 'Calling AI API...');
-
-        let url: string;
-        let body: unknown;
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-
-        if (settings.apiType === 'vertexai') {
-            // Vertex AI 格式
-            const isGcpApiKey = settings.apiKey.startsWith('AIza');
-            url = `https://${settings.gcpLocation}-aiplatform.googleapis.com/v1/projects/${settings.gcpProject}/locations/${settings.gcpLocation}/publishers/google/models/${settings.modelName}:generateContent`;
-
-            if (isGcpApiKey) {
-                url += `?key=${settings.apiKey}`;
-            } else {
-                headers['Authorization'] = `Bearer ${settings.apiKey}`;
-            }
-
-            body = {
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.8,
-                    maxOutputTokens: 8192
-                }
-            };
-        } else if (settings.apiType === 'gemini') {
-            // Gemini 格式
-            const endpoint = settings.endpoint || 'https://generativelanguage.googleapis.com';
-            url = `${this.normalizeEndpoint(endpoint)}/models/${settings.modelName}:generateContent`;
-            headers['x-goog-api-key'] = settings.apiKey;
-            body = {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.8,
-                    maxOutputTokens: 8192
-                }
-            };
-        } else {
-            // OpenAI 格式
-            const endpoint = settings.endpoint || '';
-            let baseUrl = endpoint.replace(/\/$/, '');
-            if (!baseUrl.endsWith('/v1')) {
-                baseUrl = `${baseUrl}/v1`;
-            }
-            url = `${baseUrl}/chat/completions`;
-            headers['Authorization'] = `Bearer ${settings.apiKey}`;
-            body = {
-                model: settings.modelName,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.8,
-                max_tokens: 8192
-            };
-        }
-
-        const response = await fetch('/api/proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url,
-                method: 'POST',
-                headers,
-                body
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`AI API Error: ${response.status} - ${errorText}`);
-            throw new Error(`AI API Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        // 根据 API 类型解析响应
-        if (settings.apiType === 'openai') {
-            return data.choices?.[0]?.message?.content || '';
-        } else {
-            return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        }
-    }
 
     /**
      * 解析 AI 响应 - 委托给 response-parser 模块
      */
     private parseResponse(response: string): ShowTimeline {
         return parseTimelineResponse(response);
-    }
-
-    /**
-     * 重试时的提示
-     */
-    private getRetryHint(error: Error | null): string {
-        return `
-
-注意：上次生成的格式有误 (${error?.message})。
-请确保：
-1. 输出的是有效的 JSON
-2. 不要有多余的文字
-3. 所有字段名用双引号包裹
-`;
     }
 
     /**

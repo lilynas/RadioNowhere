@@ -138,6 +138,11 @@ export interface TalkBlock {
   type: 'talk';
   id: string;
   scripts: ScriptLine[];      // 台词列表
+  soundEffects?: Array<{
+    cue: string;
+    position?: 'before' | 'after' | 'underlay';
+    volume?: number;
+  }>;
   backgroundMusic?: {
     action: 'continue' | 'fade' | 'pause';
     volume?: number;          // 0-1，fade 时的目标音量

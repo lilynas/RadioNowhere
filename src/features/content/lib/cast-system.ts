@@ -425,40 +425,51 @@ export class CastDirector {
 
     /**
      * 随机选择节目类型
-     * 多样化节目：不过度依赖时段，注重内容丰富性
+     * 使用加权随机，覆盖全部节目类型
      */
     randomShowType(): ShowType {
         const hour = new Date().getHours();
-        const rand = Math.random();
 
-        // 所有节目类型池
-        const allTypes: ShowType[] = [
-            'talk', 'interview', 'story', 'history',
-            'science', 'mystery', 'entertainment', 'music', 'nighttalk'
-        ];
+        const weights: Record<ShowType, number> = {
+            talk: 15,
+            interview: 10,
+            news: 8,
+            drama: 5,
+            entertainment: 12,
+            story: 10,
+            history: 10,
+            science: 10,
+            mystery: 10,
+            nighttalk: 8,
+            music: 5
+        };
 
-        // 时段只轻微影响概率，不硬性限制
+        // 时段微调：不改变整体多样性，只做轻量偏置
         if (hour >= 6 && hour < 10) {
-            // 早间：略偏向轻松内容
-            if (rand < 0.15) return 'news';
-            if (rand < 0.3) return 'science';
-            const morningPool: ShowType[] = ['talk', 'interview', 'music', 'history'];
-            return morningPool[Math.floor(Math.random() * morningPool.length)];
+            weights.news += 3;
+            weights.talk += 2;
+            weights.science += 2;
+        } else if (hour >= 18 && hour < 22) {
+            weights.entertainment += 2;
+            weights.interview += 1;
+            weights.music += 1;
         } else if (hour >= 22 || hour < 2) {
-            // 深夜：略偏向陪伴型内容
-            if (rand < 0.25) return 'nighttalk';
-            if (rand < 0.4) return 'mystery';
-            const nightPool: ShowType[] = ['story', 'history', 'talk', 'music'];
-            return nightPool[Math.floor(Math.random() * nightPool.length)];
-        } else {
-            // 其他时段：完全随机
-            // 排除 news（低频）和 drama（复杂度高）
-            const regularPool: ShowType[] = [
-                'talk', 'interview', 'story', 'history',
-                'science', 'mystery', 'entertainment', 'music'
-            ];
-            return regularPool[Math.floor(Math.random() * regularPool.length)];
+            weights.nighttalk += 4;
+            weights.mystery += 2;
+            weights.drama += 1;
         }
+
+        const totalWeight = Object.values(weights).reduce((sum, value) => sum + value, 0);
+        let threshold = Math.random() * totalWeight;
+
+        for (const [type, weight] of Object.entries(weights) as Array<[ShowType, number]>) {
+            threshold -= weight;
+            if (threshold <= 0) {
+                return type;
+            }
+        }
+
+        return 'talk';
     }
 
     /**

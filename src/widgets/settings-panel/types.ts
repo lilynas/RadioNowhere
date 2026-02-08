@@ -1,4 +1,4 @@
-import { IApiSettings, ApiType, TTSProvider } from '@shared/services/storage-service/settings';
+import { IApiSettings } from '@shared/services/storage-service/settings';
 
 export type TestStatus = "idle" | "testing" | "success" | "error";
 
