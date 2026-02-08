@@ -20,11 +20,18 @@ export interface MusicMeta {
     coverUrl?: string;
 }
 
+export interface BatchScriptLine {
+    speaker: string;
+    text: string;
+}
+
 export interface ScriptEvent {
     speaker: string;
     text: string;
     blockId: string;
     musicMeta?: MusicMeta;
+    isBatched?: boolean;
+    batchScripts?: BatchScriptLine[];
 }
 
 export interface LogEvent {
@@ -100,6 +107,22 @@ class RadioMonitor {
      */
     emitScript(speaker: string, text: string, blockId: string): void {
         const data: ScriptEvent = { speaker, text, blockId };
+        this.emit('script', data);
+    }
+
+    /**
+     * 发出批量台词事件（用于合并 TTS）
+     */
+    emitBatchScript(scripts: BatchScriptLine[], blockId: string): void {
+        if (scripts.length === 0) return;
+
+        const data: ScriptEvent = {
+            speaker: scripts.map(script => script.speaker).join('&'),
+            text: scripts.map(script => script.text).join('\n'),
+            blockId,
+            isBatched: true,
+            batchScripts: scripts
+        };
         this.emit('script', data);
     }
 

@@ -17,7 +17,6 @@ import {
 import { writerAgent } from '@features/content/lib/writer-agent';
 import { ttsAgent } from '@features/tts/lib/tts-agent';
 import { audioMixer } from '@shared/services/audio-service/mixer';
-import { searchMusic, getMusicUrl, IGDMusicTrack } from '@features/music-search/lib/gd-music-service';
 import { globalState } from '@shared/stores/global-state';
 import { radioMonitor } from '@shared/services/monitor-service';
 import { getSettings } from '@shared/services/storage-service/settings';
@@ -28,7 +27,7 @@ import { timeAnnouncementService } from '@features/time-announcement/lib/announc
 import { recordShow } from '@features/history-tracking/lib/history-manager';
 
 // ================== 导入模块 ==================
-import { DirectorState, ExecutionContext, createDefaultState } from './director-types';
+import { DirectorState, createDefaultState } from './director-types';
 import * as PlaybackController from './playback-controller';
 import * as PreloadManager from './preload-manager';
 import * as WarmupContent from './warmup-content';
@@ -280,6 +279,7 @@ export class DirectorAgent {
                 })();
 
                 await executePromise;
+                this.cleanupOldCaches([currentTimeline, nextTimeline]);
 
             } catch (error) {
                 console.error('[Director] Loop error:', error);
@@ -404,6 +404,43 @@ export class DirectorAgent {
         }
     }
 
+    private cleanupOldCaches(activeTimelines: Array<ShowTimeline | null | undefined>): void {
+        const activeSearches = new Set<string>();
+
+        for (const timeline of activeTimelines) {
+            if (!timeline) continue;
+            for (const block of timeline.blocks) {
+                if (block.type === 'music') {
+                    activeSearches.add((block as MusicBlock).search);
+                }
+            }
+        }
+
+        for (const key of this.state.musicDataCache.keys()) {
+            if (!activeSearches.has(key)) {
+                this.state.musicDataCache.delete(key);
+            }
+        }
+
+        for (const key of this.state.musicUrlCache.keys()) {
+            if (!activeSearches.has(key)) {
+                this.state.musicUrlCache.delete(key);
+            }
+        }
+
+        for (const key of this.state.musicCoverCache.keys()) {
+            if (!activeSearches.has(key)) {
+                this.state.musicCoverCache.delete(key);
+            }
+        }
+
+        for (const key of this.state.musicCache.keys()) {
+            if (!activeSearches.has(key)) {
+                this.state.musicCache.delete(key);
+            }
+        }
+    }
+
     private async executeTimeline(sessionId?: number): Promise<void> {
         if (!this.state.context) return;
 
@@ -439,7 +476,10 @@ export class DirectorAgent {
                 const startWait = Date.now();
 
                 while (!PreloadManager.isBlockPrepared(this.state, block) && Date.now() - startWait < maxWait) {
-                    await this.delay(500);
+                    await this.delay(150);
+                    if (this.state.skipRequested) {
+                        break;
+                    }
                 }
 
                 if (!PreloadManager.isBlockPrepared(this.state, block)) {

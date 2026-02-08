@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic2, Music, Radio, Sparkles } from 'lucide-react';
 import { ScriptEvent } from '@shared/services/monitor-service';
 
 interface SubtitleDisplayProps {
@@ -18,115 +17,110 @@ interface DisplayInfo {
     subtitle?: string;
 }
 
+const hostNames: Record<string, string> = {
+    'host1': '阿静',
+    'host2': '小北',
+    'LUNA': 'LUNA',
+    'luna': 'LUNA',
+    'ARIA': 'Aria',
+    'aria': 'Aria',
+};
+
+const musicBarHeights = Array.from({ length: 20 }, (_, i) => 10 + ((i * 7) % 18));
+const talkBarHeights = Array.from({ length: 20 }, (_, i) => 16 + ((i * 11) % 36));
+
+const defaultDisplayInfo: DisplayInfo = {
+    type: 'idle',
+    speaker: 'system',
+    displayName: 'Radio Nowhere',
+    subtitle: ''
+};
+
+function resolveDisplayInfo(currentLine: ScriptEvent | null): DisplayInfo {
+    if (!currentLine) {
+        return defaultDisplayInfo;
+    }
+
+    const speaker = currentLine.speaker;
+    const text = currentLine.text;
+
+    if (currentLine.isBatched && currentLine.batchScripts && currentLine.batchScripts.length > 0) {
+        const uniqueSpeakers = Array.from(new Set(currentLine.batchScripts.map(script => script.speaker)));
+        return {
+            type: 'talk',
+            speaker: uniqueSpeakers.join('&'),
+            displayName: uniqueSpeakers.map(name => hostNames[name] || name).join(' × ') || '对话中',
+            subtitle: currentLine.batchScripts
+                .map(script => `${hostNames[script.speaker] || script.speaker}: ${script.text}`)
+                .join('\n')
+        };
+    }
+
+    const lowerText = text.toLowerCase();
+    if (speaker === 'music' || speaker === 'dj' || lowerText.includes('music')) {
+        if (currentLine.musicMeta) {
+            const { trackName, artist, album } = currentLine.musicMeta;
+            return {
+                type: 'music',
+                speaker,
+                displayName: trackName,
+                subtitle: `${artist} · ${album}`
+            };
+        }
+
+        const rawName = text.replace('Playing: ', '');
+        const displayName = rawName.toLowerCase() === 'music' ? 'Now Playing' : rawName || 'Now Playing';
+
+        return {
+            type: 'music',
+            speaker,
+            displayName,
+            subtitle: '🎵 Music'
+        };
+    }
+
+    if (speaker === 'system' || speaker === 'announcer') {
+        return {
+            type: 'system',
+            speaker,
+            displayName: text.slice(0, 30) || 'System',
+            subtitle: '📡 System'
+        };
+    }
+
+    return {
+        type: 'talk',
+        speaker,
+        displayName: hostNames[speaker] || speaker,
+        subtitle: text
+    };
+}
+
 const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }: SubtitleDisplayProps) => {
-    const [displayInfo, setDisplayInfo] = useState<DisplayInfo>({
-        type: 'idle',
-        speaker: 'system',
-        displayName: 'Radio Nowhere',
-        subtitle: ''
-    });
+    const displayInfo = useMemo(() => resolveDisplayInfo(currentLine), [currentLine]);
+    const [coverUrl, setCoverUrl] = useState("/default_cover.png");
+    const lastFetchedTrack = useRef<string>("");
 
     useEffect(() => {
-        if (!currentLine) {
-            setDisplayInfo({
-                type: 'idle',
-                speaker: 'system',
-                displayName: 'Radio Nowhere',
-                subtitle: ''
-            });
-            return;
+        if (displayInfo.type !== 'talk' && isExpanded) {
+            onExpandChange(false);
         }
-
-        const speaker = currentLine.speaker;
-        const text = currentLine.text;
-
-        // Determine display info based on speaker
-        const lowerText = text.toLowerCase();
-        if (speaker === 'music' || speaker === 'dj' || lowerText.includes('music')) {
-            // Music playing - 优先使用事件中的元数据
-            if (currentLine.musicMeta) {
-                const { trackName, artist, album, coverUrl } = currentLine.musicMeta;
-                setDisplayInfo({
-                    type: 'music',
-                    speaker: speaker,
-                    displayName: trackName,
-                    subtitle: `${artist} · ${album}`
-                });
-                // 直接使用事件中的封面 URL
-                if (coverUrl) {
-                    setCoverUrl(coverUrl);
-                    lastFetchedTrack.current = trackName;
-                }
-                return;
-            }
-
-            // 降级到原有逻辑
-            const rawName = text.replace('Playing: ', '');
-            // If the name is just "music" (common system message), show "Now Playing" instead
-            const displayName = rawName.toLowerCase() === 'music' ? 'Now Playing' : rawName || 'Now Playing';
-
-            setDisplayInfo({
-                type: 'music',
-                speaker: speaker,
-                displayName: displayName,
-                subtitle: '🎵 Music'
-            });
-        } else if (speaker === 'system' || speaker === 'announcer') {
-            // System message
-            setDisplayInfo({
-                type: 'system',
-                speaker: speaker,
-                displayName: text.slice(0, 30) || 'System',
-                subtitle: '📡 System'
-            });
-        } else {
-            // Host talking
-            const hostNames: Record<string, string> = {
-                'host1': '阿静',
-                'host2': '小北',
-                'LUNA': 'LUNA',
-                'luna': 'LUNA',
-                'ARIA': 'Aria',
-                'aria': 'Aria',
-            };
-            const displayName = hostNames[speaker] || speaker;
-
-            setDisplayInfo({
-                type: 'talk',
-                speaker: speaker,
-                displayName: displayName,
-                subtitle: text
-            });
-        }
-    }, [currentLine]);
-
-    const getIcon = () => {
-        switch (displayInfo.type) {
-            case 'music': return <Music size={24} />;
-            case 'talk': return <Mic2 size={24} />;
-            case 'system': return <Radio size={24} />;
-            default: return <Sparkles size={24} />;
-        }
-    };
-
-    const getGradient = () => {
-        switch (displayInfo.type) {
-            case 'music': return 'from-pink-500 to-orange-400';
-            case 'talk': return 'from-violet-500 to-pink-500';
-            case 'system': return 'from-blue-500 to-cyan-400';
-            default: return 'from-neutral-600 to-neutral-500';
-        }
-    };
+    }, [displayInfo.type, isExpanded, onExpandChange]);
 
     // 模拟声波数据
     const bars = Array.from({ length: 20 });
 
-    // State for dynamic cover art
-    const [coverUrl, setCoverUrl] = useState("/default_cover.png");
-    const lastFetchedTrack = useRef<string>("");
-
     // Fetch cover art when music track changes
     useEffect(() => {
+        const eventCover = currentLine?.musicMeta?.coverUrl;
+        if (displayInfo.type === 'music' && eventCover) {
+            setTimeout(() => {
+                setCoverUrl(eventCover);
+            }, 0);
+            lastFetchedTrack.current = displayInfo.displayName;
+            return;
+        }
+
         if (displayInfo.type === 'music' && displayInfo.displayName && displayInfo.displayName !== 'Now Playing' && displayInfo.displayName !== 'Radio Nowhere') {
             const trackName = displayInfo.displayName;
 
@@ -166,31 +160,12 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
             fetchCover();
         } else if (displayInfo.type !== 'music') {
             // Reset to default for non-music
-            setCoverUrl("/default_cover.png");
+            setTimeout(() => {
+                setCoverUrl("/default_cover.png");
+            }, 0);
             lastFetchedTrack.current = "";
         }
-    }, [displayInfo.type, displayInfo.displayName]);
-
-    // Default Cover Art Component (Generated Fluid Art)
-    const DefaultCover = () => (
-        <div className="w-48 h-48 md:w-56 md:h-56 rounded-[24px] overflow-hidden relative shadow-2xl shadow-black/50 group mx-auto">
-            {/* Using the dynamic cover url */}
-            <img
-                src={coverUrl}
-                alt="Album Cover"
-                className="w-full h-full object-cover transform transition-transform duration-700 group-hover:scale-110 bg-neutral-900"
-                onError={(e) => {
-                    // Fallback if image fails loading
-                    (e.target as HTMLImageElement).src = "/default_cover.png";
-                }}
-            />
-
-            {/* Overlay for music state */}
-            {displayInfo.type === 'music' && (
-                <div className="absolute inset-0 bg-black/20" />
-            )}
-        </div>
-    );
+    }, [currentLine?.musicMeta?.coverUrl, displayInfo.type, displayInfo.displayName]);
 
     const showCover = displayInfo.type !== 'talk' && !isExpanded;
 
@@ -210,7 +185,20 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
                                 transition={{ duration: 0.4 }}
                                 className="mb-6 sm:mb-8"
                             >
-                                <DefaultCover />
+                                <div className="w-48 h-48 md:w-56 md:h-56 rounded-[24px] overflow-hidden relative shadow-2xl shadow-black/50 group mx-auto">
+                                    <img
+                                        src={coverUrl}
+                                        alt="Album Cover"
+                                        className="w-full h-full object-cover transform transition-transform duration-700 group-hover:scale-110 bg-neutral-900"
+                                        onError={(e) => {
+                                            (e.target as HTMLImageElement).src = "/default_cover.png";
+                                        }}
+                                    />
+
+                                    {displayInfo.type === 'music' && (
+                                        <div className="absolute inset-0 bg-black/20" />
+                                    )}
+                                </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -223,7 +211,7 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
                             className="w-full flex items-center gap-3 px-4 pb-4 border-b border-white/5 mb-4"
                         >
                             <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0">
-                                <img src={coverUrl} className="w-full h-full object-cover" />
+                                <img src={coverUrl} alt="Current cover" className="w-full h-full object-cover" />
                             </div>
                             <div className="flex flex-col overflow-hidden">
                                 <span className="text-white font-bold truncate">{displayInfo.displayName}</span>
@@ -260,7 +248,7 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
                                                 <motion.div
                                                     key={i}
                                                     animate={{
-                                                        height: [8, Math.random() * 24 + 8, 8],
+                                                        height: [8, musicBarHeights[i], 8],
                                                         opacity: [0.3, 1, 0.3]
                                                     }}
                                                     transition={{
@@ -306,7 +294,7 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
                                             <motion.div
                                                 key={i}
                                                 animate={{
-                                                    height: [12, Math.random() * 48 + 12, 12],
+                                                    height: [12, talkBarHeights[i], 12],
                                                     opacity: [0.3, 0.8, 0.3]
                                                 }}
                                                 transition={{
@@ -410,4 +398,3 @@ const SubtitleDisplay = React.memo(({ currentLine, isExpanded, onExpandChange }:
 SubtitleDisplay.displayName = 'SubtitleDisplay';
 
 export default SubtitleDisplay;
-

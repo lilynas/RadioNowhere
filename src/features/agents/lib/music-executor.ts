@@ -8,7 +8,7 @@ import { ttsAgent } from '@features/tts/lib/tts-agent';
 import { audioMixer } from '@shared/services/audio-service/mixer';
 import { radioMonitor } from '@shared/services/monitor-service';
 import { globalState } from '@shared/stores/global-state';
-import { searchMusic, getMusicUrl, getLyrics, getAlbumArt, IGDMusicTrack } from '@features/music-search/lib/gd-music-service';
+import { searchMusic, getMusicUrl, getLyrics, getAlbumArt } from '@features/music-search/lib/gd-music-service';
 import { recordSong } from '@features/history-tracking/lib/history-manager';
 import { addProhibitedArtist } from '@features/music-search/lib/diversity-manager';
 import { AUDIO } from '@shared/utils/constants';
@@ -198,6 +198,7 @@ export async function executeMusicBlock(
         if (cachedData) {
             const blobUrl = URL.createObjectURL(cachedData);
             radioMonitor.log('DIRECTOR', `Playing cached music (Blob): ${block.search}`, 'info');
+            let shouldRevokeUrl = true;
 
             const result = await audioMixer.playMusic(blobUrl, {
                 fadeIn: block.fadeIn ?? AUDIO.MUSIC_DEFAULT_FADE_IN,
@@ -206,7 +207,7 @@ export async function executeMusicBlock(
             });
 
             if (result.success) {
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+                shouldRevokeUrl = false;
 
                 // 发送带元数据的音乐播放事件
                 const track = state.musicCache.get(block.search);
@@ -228,13 +229,18 @@ export async function executeMusicBlock(
                     await delay(block.duration * 1000);
                     await audioMixer.fadeMusic(0, 2000);
                     audioMixer.stopMusic();
+                    URL.revokeObjectURL(blobUrl);
                     audioMixer.setMusicVolume(AUDIO.MUSIC_DEFAULT_VOLUME);
+                } else {
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 30 * 60 * 1000);
                 }
                 return;
             }
 
             radioMonitor.log('DIRECTOR', `Cached music playback failed: ${block.search} - ${result.error}`, 'error');
-            URL.revokeObjectURL(blobUrl);
+            if (shouldRevokeUrl) {
+                URL.revokeObjectURL(blobUrl);
+            }
             radioMonitor.log('DIRECTOR', `Fallback to live search: ${block.search}`, 'warn');
         } else {
             radioMonitor.log('DIRECTOR', `Music not cached, fallback to live search: ${block.search}`, 'warn');
@@ -311,8 +317,10 @@ export async function executeMusicBlock(
  */
 export async function executeMusicControlBlock(
     block: MusicControlBlock,
-    delay: (ms: number) => Promise<void>
+    _delay: (ms: number) => Promise<void>
 ): Promise<void> {
+    void _delay;
+
     switch (block.action) {
         case 'pause':
             audioMixer.pauseMusic();

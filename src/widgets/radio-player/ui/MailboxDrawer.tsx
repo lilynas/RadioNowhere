@@ -33,7 +33,7 @@ export default function MailboxDrawer({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 20, scale: 0.95 }}
                     transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                    className="mt-6 w-full max-w-md mx-auto"
+                    className="mt-6 w-full max-w-[calc(100vw-2rem)] sm:max-w-md mx-auto"
                 >
                     {/* Outer glow wrapper */}
                     <div className="relative group">
@@ -70,12 +70,12 @@ export default function MailboxDrawer({
                                         whileTap={{ scale: 0.95 }}
                                         onClick={handleSubmit}
                                         disabled={!userMessage.trim()}
-                                        className={`p-2.5 rounded-xl transition-all duration-300 ${userMessage.trim()
+                                        className={`p-2 sm:p-2.5 rounded-xl transition-all duration-300 ${userMessage.trim()
                                             ? 'bg-linear-to-r from-violet-500 to-pink-500 text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40'
                                             : 'bg-white/5 text-neutral-600 cursor-not-allowed'
                                             }`}
                                     >
-                                        <Send size={14} />
+                                        <Send className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                     </motion.button>
 
                                     {/* Close button */}
@@ -83,9 +83,9 @@ export default function MailboxDrawer({
                                         whileHover={{ scale: 1.05 }}
                                         whileTap={{ scale: 0.95 }}
                                         onClick={onClose}
-                                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition-all duration-200"
+                                        className="p-2 sm:p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition-all duration-200"
                                     >
-                                        <X size={14} />
+                                        <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                     </motion.button>
                                 </div>
                             </div>

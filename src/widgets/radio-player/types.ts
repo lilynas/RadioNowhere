@@ -5,6 +5,7 @@ import { AgentStatus, ScriptEvent, LogEvent } from '@shared/services/monitor-ser
 export type ExtendedBlock = TimelineBlock & {
     isHistory?: boolean;
     showTitle?: string;
+    actualTrackName?: string;
 };
 
 export interface RadioPlayerState {

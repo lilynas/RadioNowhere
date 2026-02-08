@@ -31,6 +31,11 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
     const [isConnected, setIsConnected] = useState(false);
 
     const timelineScrollRef = useRef<HTMLDivElement>(null);
+    const currentBlockIdRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        currentBlockIdRef.current = currentBlockId;
+    }, [currentBlockId]);
 
     // 监听逻辑
     useEffect(() => {
@@ -40,15 +45,47 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
 
         const cleanupScript = radioMonitor.on('script', (data: ScriptEvent) => {
             setCurrentScript(data);
+            currentBlockIdRef.current = data.blockId;
             setCurrentBlockId(data.blockId);
+
+            const trackName = data.musicMeta?.trackName;
+            if (trackName) {
+                setTimeline(prev => prev.map(block => {
+                    if (block.id !== data.blockId || block.type !== 'music') {
+                        return block;
+                    }
+
+                    return {
+                        ...block,
+                        actualTrackName: trackName
+                    };
+                }));
+            }
         });
 
         const cleanupTimeline = radioMonitor.on('timeline', (data: ShowTimeline) => {
             setTimeline(prev => {
-                const prevWithHistory = prev.map(block => ({
-                    ...block,
-                    isHistory: true
-                }));
+                const activeBlockId = currentBlockIdRef.current;
+                const prevWithHistory = prev.map(block => {
+                    if (!activeBlockId) {
+                        return {
+                            ...block,
+                            isHistory: true
+                        };
+                    }
+
+                    if (block.id === activeBlockId) {
+                        return {
+                            ...block,
+                            isHistory: false
+                        };
+                    }
+
+                    return {
+                        ...block,
+                        isHistory: true
+                    };
+                });
                 const newBlocks = data.blocks.map(block => ({
                     ...block,
                     isHistory: false,
@@ -60,6 +97,7 @@ export function useRadioPlayer(): RadioPlayerState & RadioPlayerActions & {
             });
             // Reset currentBlockId when new timeline arrives to prevent ID conflicts
             // The correct block ID will be set by the next 'script' event
+            currentBlockIdRef.current = null;
             setCurrentBlockId(null);
         });
 

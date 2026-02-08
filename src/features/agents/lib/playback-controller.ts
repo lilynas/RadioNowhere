@@ -74,6 +74,10 @@ export function skipToBlock(state: DirectorState, index: number): void {
     if (index >= 0 && index < timeline.blocks.length) {
         console.log('[Director] Skip requested to block:', index, 'current:', state.context.currentBlockIndex);
 
+        // 提前更新索引，避免执行循环等待过长
+        // 这里使用 index - 1，因为 executeTimeline 中会在检测到 skipRequested 后设置为 targetBlockIndex
+        state.context.currentBlockIndex = Math.max(0, index - 1);
+
         state.skipRequested = true;
         state.targetBlockIndex = index;
 
@@ -85,17 +89,6 @@ export function skipToBlock(state: DirectorState, index: number): void {
 
         // 立即停止所有音频，避免冲突
         audioMixer.stopAll();
-
-        // Immediately emit script event for the target block to update UI state
-        // This ensures UI is in sync with the audio system
-        const targetBlock = timeline.blocks[index];
-        if (targetBlock) {
-            radioMonitor.emitScript(
-                'system',
-                `Jumping to: ${targetBlock.type}`,
-                targetBlock.id
-            );
-        }
 
         radioMonitor.log('DIRECTOR', `Jumping to block ${index}`, 'info');
     }

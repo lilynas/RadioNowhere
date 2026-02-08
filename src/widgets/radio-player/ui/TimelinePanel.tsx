@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, ChevronDown, Mic2, Music, Zap, X } from 'lucide-react';
+import { Clock, Mic2, Music, Zap, X } from 'lucide-react';
 import { TimelineBlock } from '@shared/types/radio-core';
 import { ExtendedBlock } from '../types';
 
@@ -23,6 +23,13 @@ function getBlockLabel(block: TimelineBlock): string {
         case 'music_control': return `Control: ${block.action}`;
         default: return block.type;
     }
+}
+
+function getDisplayLabel(block: ExtendedBlock): string {
+    if (block.type === 'music' && block.actualTrackName) {
+        return block.actualTrackName;
+    }
+    return getBlockLabel(block);
 }
 
 export default function TimelinePanel({
@@ -112,7 +119,7 @@ export default function TimelinePanel({
                                         <div className="flex-1 min-w-0">
                                             <div className={`text-sm font-medium truncate ${isActive ? 'text-white' : isHistory ? 'text-neutral-600' : 'text-neutral-300'
                                                 }`}>
-                                                {getBlockLabel(block)}
+                                                {getDisplayLabel(block)}
                                             </div>
                                             <div className="text-[10px] text-neutral-500 uppercase font-mono mt-0.5 flex items-center gap-2">
                                                 <span>{block.type === 'talk' ? '💬' : block.type === 'music' ? '🎵' : '⚡'}</span>
@@ -132,4 +139,3 @@ export default function TimelinePanel({
         </AnimatePresence>
     );
 }
-

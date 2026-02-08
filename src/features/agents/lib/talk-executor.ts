@@ -124,9 +124,13 @@ export async function executeTalkBlock(
     if (batchAudioData) {
         radioMonitor.log('DIRECTOR', `Playing batched audio for ${block.scripts.length} lines`, 'info');
 
-        for (const script of block.scripts) {
-            radioMonitor.emitScript(script.speaker, script.text, block.id);
-        }
+        radioMonitor.emitBatchScript(
+            block.scripts.map(script => ({
+                speaker: script.speaker,
+                text: script.text
+            })),
+            block.id
+        );
 
         try {
             await audioMixer.playVoice(batchAudioData);
